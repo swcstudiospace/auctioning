@@ -3,6 +3,7 @@
 use crate::catalog;
 use crate::error::{AppError, AppResult};
 use crate::ledger;
+use crate::narrative;
 use crate::race_engine;
 use crate::whop::{self, WhopWebhookEvent};
 use crate::onchain::{self, PrepareLogPaidRequest, PrepareLogPaidResponse, PrepareOpenRaceRequest, PrepareOpenRaceResponse, PrepareRegisterRequest, PrepareRegisterResponse, PrepareSettleRaceRequest, PrepareSettleRaceResponse};
@@ -567,4 +568,50 @@ pub async fn race_window_events(
         .await
         .map_err(AppError::from)?;
     Ok(Json(json!({ "window": window.slug, "events": events })))
+}
+
+/// SLICE A: template-first narrative bundle for one persisted race event.
+/// Optional LLM is not required; missing/failed polish stays on templates.
+pub async fn narrate_event(
+    State(state): State<crate::AppState>,
+    Path((slug, event_id)): Path<(String, uuid::Uuid)>,
+) -> AppResult<Json<serde_json::Value>> {
+    let window = race_engine::window_by_slug(&state.db, &slug)
+        .await
+        .map_err(AppError::from)?
+        .ok_or(AppError::NotFound)?;
+    let row = race_engine::event_by_id(&state.db, event_id)
+        .await
+        .map_err(AppError::from)?
+        .ok_or(AppError::NotFound)?;
+    if row.race_window_id != window.id {
+        return Err(AppError::NotFound);
+    }
+    let input = narrative::NarrativeInput::from_row(&row, Some(&window)).ok_or_else(|| {
+        AppError::BadRequest("event is missing a project or has an unknown type".into())
+    })?;
+    let bundle = narrative::generate_narrative(&input, None, chrono::Utc::now());
+    let stored = narrative::persist_bundle(&state.db, event_id, &bundle)
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(json!({
+        "event_id": event_id,
+        "window": window.slug,
+        "bundle": bundle,
+        "stored": stored,
+    })))
+}
+
+pub async fn race_window_tape(
+    State(state): State<crate::AppState>,
+    Path(slug): Path<String>,
+) -> AppResult<Json<serde_json::Value>> {
+    let window = race_engine::window_by_slug(&state.db, &slug)
+        .await
+        .map_err(AppError::from)?
+        .ok_or(AppError::NotFound)?;
+    let posts = narrative::tape_for_window(&state.db, window.id, 100)
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(json!({ "window": window.slug, "posts": posts })))
 }

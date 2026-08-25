@@ -66,6 +66,21 @@ id is deployed.
 - `POST /v1/races/windows/{slug}/snapshot` — persist ranks + narrative events
 - `GET /v1/races/windows/{slug}/events` — overtake / photo-finish / lead-change log
 
+## Narrative tape (SLICE A)
+
+Templates turn each `race_event` into X / TikTok / Instagram / newsletter /
+timeline copy. LLM polish is optional (`NARRATIVE_LLM_URL` + `NARRATIVE_LLM_KEY`);
+missing or failed polish still returns the template.
+
+```bash
+cargo test -p shuttle-auctioning narrative
+```
+
+- `POST /v1/races/windows/{slug}/events/{event_id}/narrate`
+- `GET /v1/races/windows/{slug}/tape`
+
+MagicBlock ER ticks into the grid are **not** in this slice.
+
 ## Deployment
 
 See `docs/RUNBOOK.md` for Solana program deploy, Shuttle deploy, Vercel,

@@ -25,6 +25,9 @@ pub struct AppConfig {
     /// Shared secret required on gameplay/narrative ingest endpoints so the
     /// public cannot mint free RP directly (`X-Auctioning-Ingest` header).
     pub ingest_secret: Option<String>,
+    /// Optional narrative polish endpoint. Empty = templates only.
+    pub narrative_llm_url: Option<String>,
+    pub narrative_llm_key: Option<String>,
 }
 
 impl AppConfig {
@@ -51,6 +54,14 @@ impl AppConfig {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(300),
             ingest_secret: store.get("INGEST_SECRET"),
+            narrative_llm_url: store.get("NARRATIVE_LLM_URL"),
+            narrative_llm_key: store.get("NARRATIVE_LLM_KEY"),
         }
+    }
+
+    /// Live polish is opt-in. Templates always run when this is false.
+    pub fn narrative_llm_enabled(&self) -> bool {
+        self.narrative_llm_url.as_deref().is_some_and(|u| !u.is_empty())
+            && self.narrative_llm_key.as_deref().is_some_and(|k| !k.is_empty())
     }
 }

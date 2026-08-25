@@ -15,6 +15,7 @@ pub mod config;
 mod error;
 mod handlers;
 pub mod ledger;
+pub mod narrative;
 mod onchain;
 pub mod race_engine;
 mod whop;
@@ -107,6 +108,14 @@ async fn main(
         .route(
             "/v1/races/windows/{slug}/events",
             get(handlers::race_window_events),
+        )
+        .route(
+            "/v1/races/windows/{slug}/events/{event_id}/narrate",
+            post(handlers::narrate_event),
+        )
+        .route(
+            "/v1/races/windows/{slug}/tape",
+            get(handlers::race_window_tape),
         )
         .route(
             "/v1/races/{project_pda}/{race_id}/settle",

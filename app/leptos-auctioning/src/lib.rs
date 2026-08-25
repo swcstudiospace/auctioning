@@ -297,6 +297,7 @@ pub fn App() -> impl IntoView {
             </section>
 
             <LiveGrid />
+            <RaceTape />
             <ProjectBoard wallet=wallet rp=rp />
             <Web3Actions wallet=wallet />
         </main>
@@ -356,6 +357,81 @@ fn LiveGrid() -> impl IntoView {
                         </For>
                     </tbody>
                 </table>
+            </Show>
+        </section>
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TapePost {
+    pub channel: String,
+    pub body: String,
+    pub source: String,
+}
+
+/// SLICE A: shareable race copy (templates; LLM is optional server-side).
+#[component]
+fn RaceTape() -> impl IntoView {
+    let posts = RwSignal::new(Vec::<TapePost>::new());
+    let load_error = RwSignal::new(None::<String>);
+
+    Effect::new(move |_| {
+        spawn_local(async move {
+            let slug = match api_get("/v1/races/windows").await {
+                Ok(resp) if resp.status().is_success() => {
+                    #[derive(serde::Deserialize)]
+                    struct Windows {
+                        windows: Vec<WindowRow>,
+                    }
+                    #[derive(serde::Deserialize)]
+                    struct WindowRow {
+                        slug: String,
+                    }
+                    resp.json::<Windows>()
+                        .await
+                        .ok()
+                        .and_then(|w| w.windows.into_iter().next().map(|x| x.slug))
+                }
+                _ => None,
+            };
+            let Some(slug) = slug else {
+                return;
+            };
+            match api_get(&format!("/v1/races/windows/{slug}/tape")).await {
+                Ok(resp) if resp.status().is_success() => {
+                    #[derive(serde::Deserialize)]
+                    struct Tape {
+                        posts: Vec<TapePost>,
+                    }
+                    if let Ok(t) = resp.json::<Tape>().await {
+                        posts.set(t.posts);
+                    }
+                }
+                Ok(resp) => load_error.set(Some(format!("tape unavailable ({resp:?})"))),
+                Err(e) => load_error.set(Some(e)),
+            }
+        });
+    });
+
+    view! {
+        <section class="live-grid">
+            <h2>"Race tape"</h2>
+            <p class="hint">"Templated posts from race events. Why a project moved, not just that it moved."</p>
+            <Show when=move || load_error.get().is_some()>
+                <p class="error">{move || load_error.get().unwrap_or_default()}</p>
+            </Show>
+            <Show
+                when=move || !posts.get().is_empty()
+                fallback=view! { <p class="hint">"No posts yet — snapshot a live window, then narrate an event."</p> }
+            >
+                <ul>
+                    <For each=move || posts.get() key=|p| format!("{}:{}", p.channel, p.body) let:child>
+                        <li class="project-row">
+                            <span class="pos">{child.channel.clone()}</span>
+                            <span>{child.body.clone()}</span>
+                        </li>
+                    </For>
+                </ul>
             </Show>
         </section>
     }

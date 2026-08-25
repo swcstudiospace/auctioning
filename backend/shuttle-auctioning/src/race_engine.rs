@@ -90,6 +90,19 @@ impl RaceEventKind {
             RaceEventKind::SignificantSpend => "significant_spend",
         }
     }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "overtake" => Some(Self::Overtake),
+            "photo_finish" => Some(Self::PhotoFinish),
+            "lead_change" => Some(Self::LeadChange),
+            "dark_horse_rise" => Some(Self::DarkHorseRise),
+            "race_start" => Some(Self::RaceStart),
+            "race_finish" => Some(Self::RaceFinish),
+            "significant_spend" => Some(Self::SignificantSpend),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -325,6 +338,7 @@ pub struct RaceEventRow {
     pub summary: Option<String>,
     pub is_narrative_worthy: bool,
     pub created_at: DateTime<Utc>,
+    pub payload: serde_json::Value,
 }
 
 /// Ensure a live weekly Grand Prix exists so the grid is never empty-state.
@@ -568,7 +582,8 @@ pub async fn events_for_window(
     sqlx::query_as::<_, RaceEventRow>(
         r#"
         SELECT id, race_window_id, project_handle, other_handle,
-               event_type, title, summary, is_narrative_worthy, created_at
+               event_type, title, summary, is_narrative_worthy, created_at,
+               COALESCE(payload, '{}'::jsonb) AS payload
         FROM race_events
         WHERE race_window_id = $1
         ORDER BY created_at DESC
@@ -578,6 +593,21 @@ pub async fn events_for_window(
     .bind(window_id)
     .bind(limit.clamp(1, 200))
     .fetch_all(db)
+    .await
+}
+
+pub async fn event_by_id(db: &PgPool, id: Uuid) -> Result<Option<RaceEventRow>, sqlx::Error> {
+    sqlx::query_as::<_, RaceEventRow>(
+        r#"
+        SELECT id, race_window_id, project_handle, other_handle,
+               event_type, title, summary, is_narrative_worthy, created_at,
+               COALESCE(payload, '{}'::jsonb) AS payload
+        FROM race_events
+        WHERE id = $1
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(db)
     .await
 }
 
@@ -727,5 +757,7 @@ mod tests {
     fn event_kind_round_trip() {
         assert_eq!(RaceEventKind::Overtake.as_str(), "overtake");
         assert_eq!(RaceEventKind::PhotoFinish.as_str(), "photo_finish");
+        assert_eq!(RaceEventKind::parse("lead_change"), Some(RaceEventKind::LeadChange));
+        assert_eq!(RaceEventKind::parse("nope"), None);
     }
 }
