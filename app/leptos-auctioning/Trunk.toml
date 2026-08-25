@@ -1,0 +1,11 @@
+[build]
+target = "index.html"
+dist = "dist"
+release = false
+
+[watch]
+watch = ["src", "index.html"]
+
+[serve]
+port = 3000
+open = false

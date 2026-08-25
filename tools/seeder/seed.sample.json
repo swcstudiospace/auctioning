@@ -1,0 +1,23 @@
+[
+  {
+    "id": "beanz-coffee-brisbane",
+    "name": "Beanz Coffee",
+    "url": "https://outbid.lol/listing/beanz-coffee-brisbane",
+    "blurb": "Specialty roaster in West End. Weekly cupping nights, loud regulars.",
+    "tags": ["coffee", "brisbane", "hospitality"]
+  },
+  {
+    "id": "night-market-collective",
+    "name": "Night Market Collective",
+    "url": "https://outbid.lol/listing/night-market-collective",
+    "blurb": "Roving street-food collective running pop-ups across SEQLD.",
+    "tags": ["food", "events", "brisbane"]
+  },
+  {
+    "id": "pixel-forge-games",
+    "name": "Pixel Forge Games",
+    "url": "https://outbid.lol/listing/pixel-forge-games",
+    "blurb": "Two-person indie studio shipping arcade racers with too much lore.",
+    "tags": ["games", "indie", "devtools"]
+  }
+]

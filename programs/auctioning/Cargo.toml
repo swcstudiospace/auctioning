@@ -1,0 +1,28 @@
+[package]
+name = "auctioning"
+version = "0.1.0"
+description = "auctioning.lol — public RP ledger on Solana mainnet"
+edition = "2021"
+rust-version = "1.86"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "auctioning"
+
+[features]
+no-entrypoint = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = { version = "1.1", features = ["init-if-needed"] }
+
+[dev-dependencies]
+borsh = "1"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+[profile.release.build-override]
+opt-level = 3

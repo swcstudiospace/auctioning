@@ -1,0 +1,33 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Anchor
+.anchor/
+test-ledger/
+.anchor-build/
+
+# Shuttle
+Secrets.toml
+**/Secrets.toml
+
+# Env / local secrets (paths only in .env.example — never keypair bytes)
+.env
+.env.*
+!.env.example
+
+# Leptos / Trunk
+dist/
+app/dist/
+
+# Next.js marketing export
+marketing/.next/
+marketing/out/
+marketing/node_modules/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

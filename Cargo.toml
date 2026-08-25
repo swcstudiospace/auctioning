@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = [
+    "programs/auctioning",
+    "backend/shuttle-auctioning",
+    "app/leptos-auctioning",
+    "magicblock",
+]
+
+[workspace.package]
+edition = "2021"
+
+[profile.release]
+overflow-checks = true
