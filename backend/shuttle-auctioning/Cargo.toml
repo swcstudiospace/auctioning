@@ -11,6 +11,8 @@ shuttle-runtime = "0.57"
 shuttle-shared-db = { version = "0.57", features = ["postgres", "sqlx"] }
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3"
 # NOTE: pinned to sqlx 0.8 because shuttle-shared-db 0.57 implements its
 # PgPool bridge against sqlx 0.8; mixing 0.9 here breaks the shuttle macro.
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid", "macros"] }

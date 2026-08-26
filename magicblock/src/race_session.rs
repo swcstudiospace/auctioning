@@ -17,6 +17,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
+use solana_sdk::instruction::{AccountMeta, Instruction};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -291,6 +292,91 @@ pub fn parse_pubkey(s: &str) -> Result<Pubkey> {
     Pubkey::from_str(s).with_context(|| format!("invalid pubkey: {s}"))
 }
 
+/// MagicBlock ER delegation program id (parsed from the pinned constant).
+pub fn delegation_program_id() -> Pubkey {
+    parse_pubkey(er_programs::DELEGATION_PROGRAM_ID).unwrap_or_else(|_| Pubkey::new_from_array([0; 32]))
+}
+
+/// Build a `delegate` instruction against the MagicBlock delegation program.
+pub fn build_delegate_instruction(authority: &Pubkey, account: &Pubkey) -> Instruction {
+    Instruction {
+        program_id: delegation_program_id(),
+        accounts: vec![
+            AccountMeta::new(*account, false),
+            AccountMeta::new_readonly(*authority, true),
+        ],
+        data: settlement::anchor_discriminator("delegate").to_vec(),
+    }
+}
+
+/// JSON-RPC 2.0 `accountSubscribe` request for an ER account.
+pub fn account_subscribe_request(id: u64, pubkey: &str) -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "accountSubscribe",
+        "params": [
+            pubkey,
+            {
+                "encoding": "base64",
+                "commitment": "confirmed"
+            }
+        ]
+    })
+}
+
+/// Parse a Shuttle `TickEnvelope` or a Solana `accountNotification` into a tick.
+pub fn parse_tick_notification(text: &str) -> Option<TickEnvelope> {
+    if let Ok(env) = serde_json::from_str::<TickEnvelope>(text) {
+        if !env.session_id.is_empty() {
+            return Some(env);
+        }
+    }
+
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    if v.get("method").and_then(|m| m.as_str()) != Some("accountNotification") {
+        return None;
+    }
+
+    let params = v.get("params");
+    let result = params.and_then(|p| p.get("result"));
+    let seq = result
+        .and_then(|r| r.get("context"))
+        .and_then(|c| c.get("slot"))
+        .and_then(|s| s.as_u64())
+        .unwrap_or(0);
+    let project = result
+        .and_then(|r| r.get("value"))
+        .and_then(|val| val.get("pubkey"))
+        .and_then(|p| p.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            params
+                .and_then(|p| p.get("pubkey"))
+                .and_then(|p| p.as_str())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            params
+                .and_then(|p| p.get("subscription"))
+                .and_then(|s| s.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_default();
+
+    Some(TickEnvelope {
+        session_id: project.clone(),
+        seq,
+        project: project.clone(),
+        race_id: 0,
+        entrant: project,
+        score: 0,
+        updated_at_ms: 0,
+        signature: None,
+        handle: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,6 +444,61 @@ mod tests {
         let d2 = settlement::anchor_discriminator("settle_race");
         assert_eq!(d, d2);
         assert_ne!(d, settlement::anchor_discriminator("open_race"));
+    }
+
+    #[test]
+    fn build_delegate_instruction_signer_and_disc() {
+        let authority = Pubkey::new_unique();
+        let account = Pubkey::new_unique();
+        let ix = build_delegate_instruction(&authority, &account);
+        assert!(ix.accounts[1].is_signer);
+        assert_eq!(
+            ix.data.as_slice(),
+            settlement::anchor_discriminator("delegate").as_slice()
+        );
+        if let Ok(pid) = parse_pubkey(er_programs::DELEGATION_PROGRAM_ID) {
+            assert_eq!(ix.program_id, pid);
+        }
+        assert_eq!(ix.accounts[0].pubkey, account);
+        assert!(!ix.accounts[0].is_signer);
+        assert_eq!(ix.accounts[1].pubkey, authority);
+    }
+
+    #[test]
+    fn account_subscribe_request_method_and_id() {
+        let v = account_subscribe_request(7, "Abc");
+        assert_eq!(v.get("method").and_then(|m| m.as_str()), Some("accountSubscribe"));
+        assert_eq!(v.get("id").and_then(|i| i.as_u64()), Some(7));
+    }
+
+    #[test]
+    fn parse_tick_notification_envelope_roundtrip() {
+        let env = TickEnvelope {
+            session_id: "sess-1".into(),
+            seq: 1,
+            project: "proj".into(),
+            race_id: 0,
+            entrant: "ent".into(),
+            score: 9,
+            updated_at_ms: 0,
+            signature: None,
+            handle: None,
+        };
+        let json = serde_json::to_string(&env).unwrap();
+        let parsed = parse_tick_notification(&json).expect("envelope");
+        assert_eq!(parsed.session_id, "sess-1");
+    }
+
+    #[test]
+    fn parse_tick_notification_garbage_is_none() {
+        assert!(parse_tick_notification("not-json {{{").is_none());
+    }
+
+    #[test]
+    fn parse_tick_notification_account_notification_slot() {
+        let text = r#"{"jsonrpc":"2.0","method":"accountNotification","params":{"result":{"context":{"slot":42},"value":{}},"subscription":1}}"#;
+        let parsed = parse_tick_notification(text).expect("notification");
+        assert_eq!(parsed.seq, 42);
     }
 
     #[tokio::test]

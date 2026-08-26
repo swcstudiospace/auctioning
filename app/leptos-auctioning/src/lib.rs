@@ -180,6 +180,19 @@ async fn api_post<T: serde::Serialize>(path: &str, body: &T) -> Result<reqwest::
 // UI components
 // ---------------------------------------------------------------------------
 
+/// CSR path `/p/{handle}` (optional trailing slash) → project handle.
+fn project_handle_from_location() -> Option<String> {
+    let pathname = web_sys::window()?.location().pathname().ok()?;
+    let trimmed = pathname.trim_end_matches('/');
+    let handle = trimmed.strip_prefix("/p/")?;
+    if handle.is_empty() || handle.contains('/') {
+        None
+    } else {
+        Some(handle.to_string())
+    }
+}
+
+
 /// Top-level app shell with the connect button + main flows.
 #[component]
 pub fn App() -> impl IntoView {
@@ -250,57 +263,70 @@ pub fn App() -> impl IntoView {
         });
     };
 
-    view! {
-        <main class="app">
-            <header>
-                <h1>"auctioning.lol"</h1>
-                <Show
-                    when=move || wallet.get().is_some()
-                    fallback=view! {
-                        <button class="btn-connect" on:click=on_connect disabled=busy>
-                            {move || if busy.get() { "Connecting…" } else { "Connect Phantom" }}
-                        </button>
-                    }
-                >
-                    <span class="wallet-pill">
-                        {move || truncate_wallet(wallet.get().unwrap_or_default())}
-                    </span>
-                </Show>
-            </header>
-
-            <Show when=move || error.get().is_some()>
-                <p class="error">{move || error.get().unwrap_or_default()}</p>
-            </Show>
-            <Show when=move || notice.get().is_some()>
-                <p class="notice">{move || notice.get().unwrap_or_default()}</p>
-            </Show>
-
-            <section class="rp-panel">
-                <h2>"Your RP"</h2>
-                <Suspense fallback=view! { <p>"Loading…"</p> }>
-                    {move || Suspend::new(async move {
-                        match rp.get() {
-                            None => view! { <p>"Connect your wallet to see your balance."</p> }.into_any(),
-                            Some(v) => view! {
-                                <div class="rp-grid">
-                                    <div><b>{v.paid_rp}</b><span>" paid RP (on-chain provenance)"</span></div>
-                                    <div><b>{v.free_rp}</b><span>" free RP (non-cashable, expires)"</span></div>
-                                    <div><b>{v.spent_rp}</b><span>" spent supporting projects"</span></div>
-                                </div>
-                                <button class="btn-claim" on:click=on_claim_weekly disabled=busy>
-                                    "Claim weekly free RP"
-                                </button>
-                            }.into_any(),
+    match project_handle_from_location() {
+        Some(handle) => view! {
+            <main class="app">
+                <header>
+                    <h1>"auctioning.lol"</h1>
+                    <a class="project-name" href="/">"Back to grid"</a>
+                </header>
+                <ProjectPage handle=handle wallet=wallet rp=rp />
+            </main>
+        }
+        .into_any(),
+        None => view! {
+            <main class="app">
+                <header>
+                    <h1>"auctioning.lol"</h1>
+                    <Show
+                        when=move || wallet.get().is_some()
+                        fallback=view! {
+                            <button class="btn-connect" on:click=on_connect disabled=busy>
+                                {move || if busy.get() { "Connecting…" } else { "Connect Phantom" }}
+                            </button>
                         }
-                    })}
-                </Suspense>
-            </section>
+                    >
+                        <span class="wallet-pill">
+                            {move || truncate_wallet(wallet.get().unwrap_or_default())}
+                        </span>
+                    </Show>
+                </header>
 
-            <LiveGrid />
-            <RaceTape />
-            <ProjectBoard wallet=wallet rp=rp />
-            <Web3Actions wallet=wallet />
-        </main>
+                <Show when=move || error.get().is_some()>
+                    <p class="error">{move || error.get().unwrap_or_default()}</p>
+                </Show>
+                <Show when=move || notice.get().is_some()>
+                    <p class="notice">{move || notice.get().unwrap_or_default()}</p>
+                </Show>
+
+                <section class="rp-panel">
+                    <h2>"Your RP"</h2>
+                    <Suspense fallback=view! { <p>"Loading…"</p> }>
+                        {move || Suspend::new(async move {
+                            match rp.get() {
+                                None => view! { <p>"Connect your wallet to see your balance."</p> }.into_any(),
+                                Some(v) => view! {
+                                    <div class="rp-grid">
+                                        <div><b>{v.paid_rp}</b><span>" paid RP (on-chain provenance)"</span></div>
+                                        <div><b>{v.free_rp}</b><span>" free RP (non-cashable, expires)"</span></div>
+                                        <div><b>{v.spent_rp}</b><span>" spent supporting projects"</span></div>
+                                    </div>
+                                    <button class="btn-claim" on:click=on_claim_weekly disabled=busy>
+                                        "Claim weekly free RP"
+                                    </button>
+                                }.into_any(),
+                            }
+                        })}
+                    </Suspense>
+                </section>
+
+                <LiveGrid />
+                <RaceTape />
+                <ProjectBoard wallet=wallet rp=rp />
+                <Web3Actions wallet=wallet />
+            </main>
+        }
+        .into_any(),
     }
 }
 
