@@ -532,6 +532,141 @@ fn ProjectBoard(wallet: RwSignal<Option<String>>, rp: RwSignal<Option<RpView>>) 
     }
 }
 
+/// Per-project telemetry at `/p/{handle}`.
+#[component]
+fn ProjectPage(
+    handle: String,
+    wallet: RwSignal<Option<String>>,
+    rp: RwSignal<Option<RpView>>,
+) -> impl IntoView {
+    let project = RwSignal::new(None::<ProjectRow>);
+    let not_found = RwSignal::new(false);
+    let slot = RwSignal::new(None::<GridSlot>);
+    let alloc_count = RwSignal::new(None::<usize>);
+    let load_error = RwSignal::new(None::<String>);
+
+    let support_handle = handle.clone();
+    Effect::new(move |_| {
+        let handle = handle.clone();
+        spawn_local(async move {
+            match api_get(&format!("/v1/projects/{handle}")).await {
+                Ok(resp) if resp.status().as_u16() == 404 => {
+                    not_found.set(true);
+                }
+                Ok(resp) if resp.status().is_success() => {
+                    match resp.json::<ProjectRow>().await {
+                        Ok(p) => project.set(Some(p)),
+                        Err(e) => load_error.set(Some(format!("project parse: {e}"))),
+                    }
+                }
+                Ok(resp) => load_error.set(Some(format!("project unavailable ({resp:?})"))),
+                Err(e) => load_error.set(Some(e)),
+            }
+
+            match api_get("/v1/grid").await {
+                Ok(resp) if resp.status().is_success() => {
+                    #[derive(Deserialize)]
+                    struct Grid {
+                        grid: Vec<GridSlot>,
+                    }
+                    if let Ok(g) = resp.json::<Grid>().await {
+                        slot.set(g.grid.into_iter().find(|s| s.handle == handle));
+                    }
+                }
+                _ => {}
+            }
+
+            match api_get(&format!("/v1/projects/{handle}/allocations")).await {
+                Ok(resp) if resp.status().is_success() => {
+                    #[derive(Deserialize)]
+                    struct AllocationsPayload {
+                        #[serde(default)]
+                        allocations: Vec<serde_json::Value>,
+                    }
+                    if let Ok(body) = resp.json::<AllocationsPayload>().await {
+                        alloc_count.set(Some(body.allocations.len()));
+                    }
+                }
+                Ok(resp) if resp.status().as_u16() == 404 => {
+                    alloc_count.set(Some(0));
+                }
+                _ => {}
+            }
+        });
+    });
+
+    let on_support = move |_| {
+        let Some(_addr) = wallet.get_untracked() else {
+            return;
+        };
+        let handle = support_handle.clone();
+        spawn_local(async move {
+            let req = SpendRequest {
+                wallet: &_addr,
+                amount: 25,
+                reason: "support-project",
+            };
+            let path = format!("/v1/projects/{handle}/support");
+            match api_post(&path, &req).await {
+                Ok(resp) if resp.status().is_success() => {
+                    refresh_rp(&_addr.clone(), rp, &load_error).await;
+                }
+                Ok(resp) if resp.status().as_u16() == 409 => {
+                    load_error.set(Some("Not enough RP for that.".into()));
+                }
+                Ok(resp) => load_error.set(Some(format!("support failed: {resp:?}"))),
+                Err(e) => load_error.set(Some(e)),
+            }
+        });
+    };
+
+    view! {
+        <section class="board">
+            <Show when=move || load_error.get().is_some()>
+                <p class="error">{move || load_error.get().unwrap_or_default()}</p>
+            </Show>
+            {move || {
+                if not_found.get() {
+                    view! { <p class="error">"Project not on the grid"</p> }.into_any()
+                } else if let Some(p) = project.get() {
+                    let s = slot.get();
+                    view! {
+                        <h2>{p.display_name.clone().unwrap_or_else(|| p.handle.clone())}</h2>
+                        <p class="hint">{p.handle.clone()}</p>
+                        <p class="hint">{p.blurb.clone().unwrap_or_default()}</p>
+                        <div class="rp-grid">
+                            <div><b>{p.total_rp}</b><span>" total RP"</span></div>
+                            <div><b>{s.as_ref().map(|g| g.rank).unwrap_or(0)}</b><span>" rank"</span></div>
+                            <div><b>{s.as_ref().map(|g| g.race_rp).unwrap_or(0)}</b><span>" race RP"</span></div>
+                            <div><b>{s.as_ref().map(|g| g.velocity).unwrap_or(0)}</b><span>" velocity"</span></div>
+                            <div><b>{s.as_ref().map(|g| g.momentum).unwrap_or(0)}</b><span>" momentum"</span></div>
+                            <div><b>{s.as_ref().map(|g| g.gap_to_leader).unwrap_or(0)}</b><span>" gap to leader"</span></div>
+                        </div>
+                    }
+                    .into_any()
+                } else {
+                    view! { <p class="hint">"Loading…"</p> }.into_any()
+                }
+            }}
+            <p class="hint">
+                {move || match alloc_count.get() {
+                    None => String::new(),
+                    Some(n) => format!("{n} allocations"),
+                }}
+            </p>
+            <Show when=move || project.get().is_some()>
+                <Show
+                    when=move || wallet.get().is_some()
+                    fallback=view! { <p class="hint">"Connect on home to support"</p> }
+                >
+                    <button on:click=on_support>"Support +25"</button>
+                </Show>
+            </Show>
+        </section>
+    }
+}
+
+
 async fn fetch_live_grid(
     slots: RwSignal<Vec<GridSlot>>,
     load_error: RwSignal<Option<String>>,
