@@ -52,7 +52,7 @@ Secrets (Secrets.toml / `shuttle secret set`):
 | AUTHORITY_SECRET | backend race-settle keypair (base58). Prefer Vault in prod. |
 | MAX_RACE_SECS | forced settle window (default 300) |
 | INGEST_SECRET | shared secret for earn/import endpoints |
-| SUPERGROK_* | operator OAuth for narrative polish; empty secret = templates |
+| SUPERGROK_REDIRECT_URI | PKCE callback (`/v1/oauth/supergrok/callback`); no client secret |
 
 Whop dashboard: point webhooks at `https://<shuttle-url>/v1/whop/webhook`.
 

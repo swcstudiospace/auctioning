@@ -71,10 +71,9 @@ Copy `.env.example` to `.env`. `AUTHORITY_KEYPAIR_PATH` is a filesystem path
 ## Narrative tape (SLICE A + publish)
 
 Templates turn each `race_event` into X / TikTok / Instagram / newsletter /
-timeline copy. SuperGrok Heavy OAuth is the live polish path (`SUPERGROK_*`
-secrets); logged-out / failed polish still returns the template. Operator
-approval is required before a post is marked published — no auto-post to
-social networks.
+timeline copy. SuperGrok Heavy OAuth is PKCE (redirect URI, no client secret);
+logged-out / failed polish still returns the template. Operator approval is
+required before a post is marked published — no auto-post to social networks.
 
 ```bash
 cargo test -p shuttle-auctioning narrative
@@ -107,7 +106,7 @@ framing. See `docs/LEGAL.md` and the `/legal` page of the marketing site.
 
 ## Next slice
 
-- Fill `SUPERGROK_CLIENT_SECRET` + `SUPERGROK_REDIRECT_URI` in `Secrets.toml` (empty secret = templates).
-- Copy `Secrets.toml.example` → `Secrets.toml` so `ER_WS=wss://devnet-er.magicblock.app` arms tick subscribe.
+- Register `SUPERGROK_REDIRECT_URI` (`…/v1/oauth/supergrok/callback`) on grok.ego.engineer, then GET `/v1/oauth/supergrok/login`.
+- Copy `Secrets.toml.example` → `Secrets.toml` so `ER_WS` arms tick subscribe.
 - `anchor deploy` using `keys/auctioning-keypair.json` (copy into `target/deploy` only at deploy time).
 - Production marketing: `NEXT_PUBLIC_APP_URL` (see `marketing/.env.example`).

@@ -1,8 +1,9 @@
 //! SuperGrok Heavy OAuth — sole LLM provider login (operator/backend).
 //!
-//! Authorize/token URLs default to the on-disk grok.ego.engineer connector
-//! (`/authorize`, `/token`, client id `grok`). Access tokens are stored in
-//! `oauth_tokens` and never returned on tape APIs or written to logs.
+//! Public client + PKCE. Configure `redirect_uri` (the callback URL); a
+//! client secret is not required. Authorize/token URLs default to
+//! grok.ego.engineer (`/authorize`, `/token`, client id `grok`). Access
+//! tokens stay in `oauth_tokens` and are never returned on tape APIs.
 //! Logged-out / refresh-fail / unusable completion → templates.
 
 use crate::error::{AppError, AppResult};
@@ -58,8 +59,9 @@ impl SuperGrokOauthConfig {
         }
     }
 
+    /// Ready when the redirect URI is set. PKCE public client — no secret.
     pub fn configured(&self) -> bool {
-        !self.client_secret.is_empty() && !self.redirect_uri.is_empty()
+        !self.redirect_uri.is_empty()
     }
 }
 
@@ -191,14 +193,17 @@ pub async fn exchange_code(
     let verifier = take_state(db, state)
         .await?
         .ok_or_else(|| anyhow::anyhow!("unknown oauth state"))?;
-    let body = format!(
-        "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}&code_verifier={}",
+    let mut body = format!(
+        "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&code_verifier={}",
         urlencoding(code),
         urlencoding(&cfg.redirect_uri),
         urlencoding(&cfg.client_id),
-        urlencoding(&cfg.client_secret),
         urlencoding(&verifier),
     );
+    if !cfg.client_secret.is_empty() {
+        body.push_str("&client_secret=");
+        body.push_str(&urlencoding(&cfg.client_secret));
+    }
     let resp = reqwest::Client::new()
         .post(&cfg.token_url)
         .header("Content-Type", "application/x-www-form-urlencoded")
@@ -524,6 +529,22 @@ mod tests {
         assert!(grounded("beta to P1 from P3 with 12 RP", &inp));
         assert!(!grounded("beta jumped to P9", &inp));
         assert!(!grounded("", &inp));
+    }
+
+    #[test]
+    fn pkce_configured_by_redirect_not_secret() {
+        let missing = SuperGrokOauthConfig::from_parts(None, None, None, None, None, None);
+        assert!(!missing.configured());
+        let pkce = SuperGrokOauthConfig::from_parts(
+            None,
+            None,
+            None,
+            None,
+            Some("http://127.0.0.1:8000/v1/oauth/supergrok/callback".into()),
+            None,
+        );
+        assert!(pkce.configured());
+        assert!(pkce.client_secret.is_empty());
     }
 
     #[tokio::test]
