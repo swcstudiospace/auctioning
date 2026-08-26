@@ -19,7 +19,7 @@ use std::str::FromStr;
 use crate::config::AppConfig;
 
 /// Default/placeholder; overridden by cfg.program_id at runtime (see config.rs + Secrets.toml)
-pub const PROGRAM_ID_STR: &str = "AuCT1oN1Ng111111111111111111111111111111111";
+pub const PROGRAM_ID_STR: &str = "3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrepareRegisterRequest {
