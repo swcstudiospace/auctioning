@@ -52,6 +52,22 @@ pub struct EntrantTick {
     pub updated_at_ms: u128,
 }
 
+/// Shuttle ingest envelope. Identity is `session_id` + `seq` (monotonic per
+/// MagicBlock ER session). `signature` is optional collision-breaker only.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TickEnvelope {
+    pub session_id: String,
+    pub seq: u64,
+    pub project: String,
+    pub race_id: u64,
+    pub entrant: String,
+    pub score: u64,
+    pub updated_at_ms: u128,
+    pub signature: Option<String>,
+    /// Project handle if the private catalog already knows it. Never invented.
+    pub handle: Option<String>,
+}
+
 /// A live race running on the ER.
 pub struct RaceSession {
     pub config: RaceSessionConfig,
@@ -82,6 +98,24 @@ impl RaceSession {
             mainnet_client,
             ticks: Vec::new(),
         })
+    }
+
+    pub fn session_id_for(project: &Pubkey, race_id: u64) -> String {
+        format!("{project}:{race_id}")
+    }
+
+    pub fn envelope(&self, seq: u64, tick: &EntrantTick, signature: Option<String>) -> TickEnvelope {
+        TickEnvelope {
+            session_id: Self::session_id_for(&self.project, self.race_id),
+            seq,
+            project: self.project.to_string(),
+            race_id: self.race_id,
+            entrant: tick.entrant.to_string(),
+            score: tick.score,
+            updated_at_ms: tick.updated_at_ms,
+            signature,
+            handle: None,
+        }
     }
 
     /// Record a score tick. Called from the game loop at ER speed.
@@ -269,6 +303,22 @@ mod tests {
             0,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn envelope_identity_is_session_and_seq() {
+        let s = test_session();
+        let e = Pubkey::new_unique();
+        let tick = EntrantTick {
+            entrant: e,
+            score: 7,
+            updated_at_ms: 1,
+        };
+        let env = s.envelope(3, &tick, Some("sig1".into()));
+        assert_eq!(env.seq, 3);
+        assert_eq!(env.session_id, RaceSession::session_id_for(&s.project, 0));
+        assert_eq!(env.signature.as_deref(), Some("sig1"));
+        assert_eq!(env.score, 7);
     }
 
     #[test]

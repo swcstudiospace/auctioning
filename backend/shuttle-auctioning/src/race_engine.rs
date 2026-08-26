@@ -76,6 +76,8 @@ pub enum RaceEventKind {
     RaceStart,
     RaceFinish,
     SignificantSpend,
+    /// MagicBlock ER tick that did not map to a named overtake/lead change.
+    ErTick,
 }
 
 impl RaceEventKind {
@@ -88,6 +90,7 @@ impl RaceEventKind {
             RaceEventKind::RaceStart => "race_start",
             RaceEventKind::RaceFinish => "race_finish",
             RaceEventKind::SignificantSpend => "significant_spend",
+            RaceEventKind::ErTick => "er_tick",
         }
     }
 
@@ -100,6 +103,7 @@ impl RaceEventKind {
             "race_start" => Some(Self::RaceStart),
             "race_finish" => Some(Self::RaceFinish),
             "significant_spend" => Some(Self::SignificantSpend),
+            "er_tick" => Some(Self::ErTick),
             _ => None,
         }
     }

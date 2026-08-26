@@ -256,6 +256,7 @@ fn verb(kind: RaceEventKind) -> &'static str {
         RaceEventKind::RaceStart => "lights-out for",
         RaceEventKind::RaceFinish => "took the flag in",
         RaceEventKind::SignificantSpend => "put significant RP on",
+        RaceEventKind::ErTick => "ticked on the ER against",
     }
 }
 
