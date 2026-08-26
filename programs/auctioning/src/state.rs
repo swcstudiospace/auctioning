@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs"); // keypair lives in gitignored target/deploy; replace only after a new `anchor keys` if regenerating.
+declare_id!("3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs"); // keypair: gitignored keys/auctioning-keypair.json (not target/deploy).
 
 /// Global protocol config. PDA ["config"].
 #[account]

@@ -7,9 +7,14 @@
 
 ## 2. Generate / Update Program ID
 ```bash
+# From repo root. Durable path — never store the program keypair under target/deploy
+# (`cargo build-sbf` recreates target/ and can wipe it).
+mkdir -p keys
+solana-keygen new -o keys/auctioning-keypair.json
+# At deploy time only:
+mkdir -p programs/auctioning/target/deploy
+cp keys/auctioning-keypair.json programs/auctioning/target/deploy/auctioning-keypair.json
 anchor keys list
-# or
-solana-keygen new -o ./target/deploy/auctioning-keypair.json --force
 ```
 
 Copy the pubkey into:

@@ -54,9 +54,9 @@ cd marketing && npm install && npm run dev
 ./tools/seeder/outbid_seed.py --snapshot tools/seeder/seed.sample.json
 ```
 
-Copy `.env.example` to `.env`. `AUTHORITY_KEYPAIR_PATH` is a filesystem path —
-never commit keypair bytes. Keep `ON_CHAIN_ENABLED=false` until a real program
-id is deployed.
+Copy `.env.example` to `.env`. `AUTHORITY_KEYPAIR_PATH` is a filesystem path
+(default `./keys/auctioning-keypair.json`) — never commit keypair bytes. Keep
+`ON_CHAIN_ENABLED=false` until a real program id is deployed.
 
 ## Race engine
 
@@ -109,5 +109,5 @@ framing. See `docs/LEGAL.md` and the `/legal` page of the marketing site.
 
 - Fill `SUPERGROK_CLIENT_SECRET` + `SUPERGROK_REDIRECT_URI` in `Secrets.toml` (keys are present; empty secret = templates).
 - Set `ER_WS` to the MagicBlock websocket to arm tick subscribe (empty = ping only).
-- `anchor deploy` with gitignored `programs/auctioning/target/deploy/auctioning-keypair.json` (program id `3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs`).
+- `anchor deploy` using gitignored `keys/auctioning-keypair.json` (program id `3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs`); copy into `target/deploy` only at deploy time.
 - Point marketing `NEXT_PUBLIC_APP_URL` at the hosted Leptos origin.

@@ -12,6 +12,11 @@ test-ledger/
 Secrets.toml
 **/Secrets.toml
 
+
+# Program/deploy keypairs — outside target/ so cargo build-sbf cannot wipe them.
+# Bytes never committed; keep keys/.gitkeep so the directory exists.
+/keys/*.json
+
 # Env / local secrets (paths only in .env.example — never keypair bytes)
 .env
 .env.*
