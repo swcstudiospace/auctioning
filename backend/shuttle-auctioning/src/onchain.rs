@@ -47,14 +47,16 @@ const OPEN_RACE_DISCRIMINATOR: [u8; 8] = [0xe2, 0x8b, 0xbf, 0xf7, 0xe9, 0xc7, 0x
 /// Anchor discriminator for `settle_race` (sha256("global:settle_race")[..8])
 const SETTLE_RACE_DISCRIMINATOR: [u8; 8] = [0xac, 0x20, 0x48, 0xd4, 0x9b, 0x21, 0xa1, 0xed];
 
-pub fn build_register_project_ix(owner: Pubkey, handle: &str, program_id: Pubkey) -> Result<Instruction> {
+pub fn build_register_project_ix(
+    owner: Pubkey,
+    handle: &str,
+    program_id: Pubkey,
+) -> Result<Instruction> {
     if handle.len() > 32 || handle.is_empty() {
         anyhow::bail!("handle must be 1-32 bytes");
     }
-    let (project_pda, _bump) = Pubkey::find_program_address(
-        &[b"project", owner.as_ref()],
-        &program_id,
-    );
+    let (project_pda, _bump) =
+        Pubkey::find_program_address(&[b"project", owner.as_ref()], &program_id);
 
     let mut data = REGISTER_DISCRIMINATOR.to_vec();
 
@@ -72,12 +74,15 @@ pub fn build_register_project_ix(owner: Pubkey, handle: &str, program_id: Pubkey
     Ok(Instruction::new_with_bytes(program_id, &data, accounts))
 }
 
-pub fn build_open_race_ix(payer: Pubkey, project_pda: Pubkey, current_race_nonce: u64, program_id: Pubkey) -> Result<Instruction> {
+pub fn build_open_race_ix(
+    payer: Pubkey,
+    project_pda: Pubkey,
+    current_race_nonce: u64,
+    program_id: Pubkey,
+) -> Result<Instruction> {
     let nonce_bytes = current_race_nonce.to_le_bytes();
-    let (race_pda, _bump) = Pubkey::find_program_address(
-        &[b"race", project_pda.as_ref(), &nonce_bytes],
-        &program_id,
-    );
+    let (race_pda, _bump) =
+        Pubkey::find_program_address(&[b"race", project_pda.as_ref(), &nonce_bytes], &program_id);
 
     let data = OPEN_RACE_DISCRIMINATOR.to_vec(); // no args
 
@@ -103,7 +108,13 @@ fn serialize_race_results(results: &[RaceResultInput]) -> Result<Vec<u8>> {
     Ok(data)
 }
 
-pub fn build_settle_race_ix(settler: Pubkey, project_pda: Pubkey, race_id: u64, results: &[RaceResultInput], program_id: Pubkey) -> Result<Instruction> {
+pub fn build_settle_race_ix(
+    settler: Pubkey,
+    project_pda: Pubkey,
+    race_id: u64,
+    results: &[RaceResultInput],
+    program_id: Pubkey,
+) -> Result<Instruction> {
     let race_id_bytes = race_id.to_le_bytes();
     let (race_pda, _bump) = Pubkey::find_program_address(
         &[b"race", project_pda.as_ref(), &race_id_bytes],
@@ -139,24 +150,21 @@ pub fn build_log_paid_rp_ix(
     if lamports_paid == 0 {
         anyhow::bail!("lamports_paid must be > 0");
     }
-    let (project_pda, _bump) = Pubkey::find_program_address(
-        &[b"project", owner.as_ref()],
-        &program_id,
-    );
+    let (project_pda, _bump) =
+        Pubkey::find_program_address(&[b"project", owner.as_ref()], &program_id);
 
     let payer = owner; // for now, assume the wallet is the project owner (or authority)
 
     // TODO: load real fee_vault from on-chain config or config. For demo use a placeholder.
     // In real, query the Config.fee_vault or hardcode after init.
-    let fee_vault = Pubkey::from_str("FeeVau1t111111111111111111111111111111111").unwrap_or_else(|_| Pubkey::default());
+    let fee_vault = Pubkey::from_str("FeeVau1t111111111111111111111111111111111")
+        .unwrap_or_else(|_| Pubkey::default());
 
     let config_pda = Pubkey::find_program_address(&[b"config"], &program_id).0;
 
     let seq_bytes = current_receipt_count.to_le_bytes();
-    let (receipt_pda, _bump) = Pubkey::find_program_address(
-        &[b"receipt", project_pda.as_ref(), &seq_bytes],
-        &program_id,
-    );
+    let (receipt_pda, _bump) =
+        Pubkey::find_program_address(&[b"receipt", project_pda.as_ref(), &seq_bytes], &program_id);
 
     let mut data = LOG_PAID_DISCRIMINATOR.to_vec();
     data.extend_from_slice(&rp_amount.to_le_bytes());
@@ -178,7 +186,6 @@ pub fn build_log_paid_rp_ix(
 
     Ok(Instruction::new_with_bytes(program_id, &data, accounts))
 }
-
 
 async fn fetch_latest_blockhash(rpc_url: &str) -> Result<String> {
     let client = reqwest::Client::new();
@@ -220,10 +227,7 @@ pub async fn prepare_register_project(
     let tx_bytes = bincode::serialize(&tx)?;
     let tx_base64 = general_purpose::STANDARD.encode(tx_bytes);
 
-    let (pda, _) = Pubkey::find_program_address(
-        &[b"project", owner.as_ref()],
-        &program_id,
-    );
+    let (pda, _) = Pubkey::find_program_address(&[b"project", owner.as_ref()], &program_id);
 
     Ok(PrepareRegisterResponse {
         tx_base64,
@@ -316,16 +320,11 @@ pub async fn prepare_log_paid_rp(
     let tx_base64 = general_purpose::STANDARD.encode(tx_bytes);
 
     let program_id = Pubkey::from_str(&cfg.program_id)?;
-    let (project_pda, _) = Pubkey::find_program_address(
-        &[b"project", owner.as_ref()],
-        &program_id,
-    );
+    let (project_pda, _) = Pubkey::find_program_address(&[b"project", owner.as_ref()], &program_id);
 
     let seq_bytes = req.current_receipt_count.to_le_bytes();
-    let (receipt_pda, _) = Pubkey::find_program_address(
-        &[b"receipt", project_pda.as_ref(), &seq_bytes],
-        &program_id,
-    );
+    let (receipt_pda, _) =
+        Pubkey::find_program_address(&[b"receipt", project_pda.as_ref(), &seq_bytes], &program_id);
 
     Ok(PrepareLogPaidResponse {
         tx_base64,
@@ -357,10 +356,8 @@ pub async fn prepare_open_race(
 
     let program_id = Pubkey::from_str(&cfg.program_id)?;
     let nonce_bytes = req.current_race_nonce.to_le_bytes();
-    let (race_pda, _) = Pubkey::find_program_address(
-        &[b"race", project_pda.as_ref(), &nonce_bytes],
-        &program_id,
-    );
+    let (race_pda, _) =
+        Pubkey::find_program_address(&[b"race", project_pda.as_ref(), &nonce_bytes], &program_id);
 
     Ok(PrepareOpenRaceResponse {
         tx_base64,

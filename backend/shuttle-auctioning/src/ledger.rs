@@ -266,12 +266,11 @@ pub async fn credit_paid(
     }
     let tx_id = tx_id.filter(|s| !s.is_empty());
     if let Some(id) = tx_id {
-        let already = sqlx::query_scalar::<_, i32>(
-            "SELECT 1 FROM ledger_events WHERE tx_id = $1 LIMIT 1",
-        )
-        .bind(id)
-        .fetch_optional(db)
-        .await?;
+        let already =
+            sqlx::query_scalar::<_, i32>("SELECT 1 FROM ledger_events WHERE tx_id = $1 LIMIT 1")
+                .bind(id)
+                .fetch_optional(db)
+                .await?;
         if already.is_some() {
             return ensure_wallet(db, wallet).await;
         }

@@ -185,9 +185,7 @@ pub fn compute_grid(
         let race_rp = totals.get(handle).copied().unwrap_or(0);
         let vel = velocity.get(handle).copied().unwrap_or(0);
         let pvel = prev_velocity.get(handle).copied().unwrap_or(0);
-        let next_rp = handles
-            .get(i + 1)
-            .and_then(|n| totals.get(n).copied());
+        let next_rp = handles.get(i + 1).and_then(|n| totals.get(n).copied());
         grid.push(GridSlot {
             handle: (*handle).to_string(),
             rank: (i as i32) + 1,
@@ -238,10 +236,7 @@ pub fn compute_grid(
                             "{} overtook {} (P{} → P{})",
                             slot.handle, o, prev.rank, slot.rank
                         ),
-                        None => format!(
-                            "{} moved P{} → P{}",
-                            slot.handle, prev.rank, slot.rank
-                        ),
+                        None => format!("{} moved P{} → P{}", slot.handle, prev.rank, slot.rank),
                     },
                     from_rank: Some(prev.rank),
                     to_rank: Some(slot.rank),
@@ -450,12 +445,11 @@ async fn load_previous_snapshot(
     db: &PgPool,
     window_id: Uuid,
 ) -> Result<Vec<PreviousSlot>, sqlx::Error> {
-    let latest: Option<DateTime<Utc>> = sqlx::query_scalar(
-        "SELECT MAX(snapshot_at) FROM rank_snapshots WHERE race_window_id = $1",
-    )
-    .bind(window_id)
-    .fetch_one(db)
-    .await?;
+    let latest: Option<DateTime<Utc>> =
+        sqlx::query_scalar("SELECT MAX(snapshot_at) FROM rank_snapshots WHERE race_window_id = $1")
+            .bind(window_id)
+            .fetch_one(db)
+            .await?;
     let Some(at) = latest else {
         return Ok(Vec::new());
     };
@@ -761,7 +755,10 @@ mod tests {
     fn event_kind_round_trip() {
         assert_eq!(RaceEventKind::Overtake.as_str(), "overtake");
         assert_eq!(RaceEventKind::PhotoFinish.as_str(), "photo_finish");
-        assert_eq!(RaceEventKind::parse("lead_change"), Some(RaceEventKind::LeadChange));
+        assert_eq!(
+            RaceEventKind::parse("lead_change"),
+            Some(RaceEventKind::LeadChange)
+        );
         assert_eq!(RaceEventKind::parse("nope"), None);
     }
 }

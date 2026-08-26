@@ -16,13 +16,13 @@ mod error;
 mod handlers;
 pub mod ledger;
 pub mod narrative;
-mod onchain;
-pub mod race_engine;
-mod whop;
-pub mod ticks;
 pub mod oauth_llm;
+mod onchain;
 pub mod publish;
+pub mod race_engine;
 pub mod race_worker;
+pub mod ticks;
+mod whop;
 
 use axum::routing::{get, post};
 use axum::Router;
@@ -72,13 +72,16 @@ async fn main(
 
     let cfg = config::AppConfig::from_secret_store(&secrets);
 
-    race_worker::spawn(pool.clone(), race_worker::WorkerConfig {
-        mainnet_rpc: cfg.mainnet_rpc.clone(),
-        er_rpc: cfg.er_rpc.clone(),
-        er_ws: cfg.er_ws.clone(),
-        max_race_secs: cfg.max_race_secs,
-        authority_secret_b58: cfg.authority_secret_b58.clone(),
-    });
+    race_worker::spawn(
+        pool.clone(),
+        race_worker::WorkerConfig {
+            mainnet_rpc: cfg.mainnet_rpc.clone(),
+            er_rpc: cfg.er_rpc.clone(),
+            er_ws: cfg.er_ws.clone(),
+            max_race_secs: cfg.max_race_secs,
+            authority_secret_b58: cfg.authority_secret_b58.clone(),
+        },
+    );
 
     let state = AppState {
         db: pool,
@@ -112,7 +115,10 @@ async fn main(
         .route("/v1/races/open", post(handlers::races_open))
         .route("/v1/grid", get(handlers::lifetime_grid))
         .route("/v1/races/windows", get(handlers::list_race_windows))
-        .route("/v1/races/windows/{slug}/grid", get(handlers::race_window_grid))
+        .route(
+            "/v1/races/windows/{slug}/grid",
+            get(handlers::race_window_grid),
+        )
         .route(
             "/v1/races/windows/{slug}/snapshot",
             post(handlers::race_window_snapshot),
@@ -138,10 +144,22 @@ async fn main(
             "/v1/projects/{wallet}/public",
             get(handlers::public_ledger_link),
         )
-        .route("/v1/onchain/prepare-register", post(handlers::prepare_register_project))
-        .route("/v1/onchain/prepare-log-paid", post(handlers::prepare_log_paid_rp))
-        .route("/v1/onchain/prepare-open-race", post(handlers::prepare_open_race))
-        .route("/v1/onchain/prepare-settle-race", post(handlers::prepare_settle_race))
+        .route(
+            "/v1/onchain/prepare-register",
+            post(handlers::prepare_register_project),
+        )
+        .route(
+            "/v1/onchain/prepare-log-paid",
+            post(handlers::prepare_log_paid_rp),
+        )
+        .route(
+            "/v1/onchain/prepare-open-race",
+            post(handlers::prepare_open_race),
+        )
+        .route(
+            "/v1/onchain/prepare-settle-race",
+            post(handlers::prepare_settle_race),
+        )
         .route(
             "/v1/races/windows/{slug}/ticks",
             post(ticks::ingest_window_tick),
@@ -150,26 +168,17 @@ async fn main(
             "/v1/races/sessions/{session_id}/grid",
             get(ticks::session_grid_handler),
         )
-        .route(
-            "/v1/oauth/supergrok/login",
-            get(oauth_llm::login_handler),
-        )
+        .route("/v1/oauth/supergrok/login", get(oauth_llm::login_handler))
         .route(
             "/v1/oauth/supergrok/callback",
             get(oauth_llm::callback_handler),
         )
-        .route(
-            "/v1/oauth/supergrok/status",
-            get(oauth_llm::status_handler),
-        )
+        .route("/v1/oauth/supergrok/status", get(oauth_llm::status_handler))
         .route(
             "/v1/narrative/posts/{id}/approve",
             post(publish::approve_handler),
         )
-        .route(
-            "/v1/narrative/posts/{id}/skip",
-            post(publish::skip_handler),
-        )
+        .route("/v1/narrative/posts/{id}/skip", post(publish::skip_handler))
         .route(
             "/v1/narrative/posts/{id}/mark-published",
             post(publish::mark_published_handler),

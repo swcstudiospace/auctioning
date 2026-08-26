@@ -4,10 +4,14 @@ use crate::catalog;
 use crate::error::{AppError, AppResult};
 use crate::ledger;
 use crate::narrative;
+use crate::oauth_llm;
+use crate::onchain::{
+    self, PrepareLogPaidRequest, PrepareLogPaidResponse, PrepareOpenRaceRequest,
+    PrepareOpenRaceResponse, PrepareRegisterRequest, PrepareRegisterResponse,
+    PrepareSettleRaceRequest, PrepareSettleRaceResponse,
+};
 use crate::race_engine;
 use crate::whop::{self, WhopWebhookEvent};
-use crate::oauth_llm;
-use crate::onchain::{self, PrepareLogPaidRequest, PrepareLogPaidResponse, PrepareOpenRaceRequest, PrepareOpenRaceResponse, PrepareRegisterRequest, PrepareRegisterResponse, PrepareSettleRaceRequest, PrepareSettleRaceResponse};
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::Json;
@@ -596,14 +600,7 @@ pub async fn narrate_event(
     if !oauth_cfg.completion_url.is_empty() {
         if let Ok(Some(token)) = oauth_llm::load_access_token(&state.db).await {
             for post in bundle.posts.iter_mut() {
-                match oauth_llm::polish(
-                    &oauth_cfg,
-                    &token,
-                    post.channel,
-                    &post.body,
-                    &input,
-                )
-                .await
+                match oauth_llm::polish(&oauth_cfg, &token, post.channel, &post.body, &input).await
                 {
                     Ok(body) => {
                         post.body = body;

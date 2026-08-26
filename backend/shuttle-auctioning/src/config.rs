@@ -76,8 +76,13 @@ impl AppConfig {
 
     /// Live polish is opt-in. Templates always run when this is false.
     pub fn narrative_llm_enabled(&self) -> bool {
-        self.narrative_llm_url.as_deref().is_some_and(|u| !u.is_empty())
-            && self.narrative_llm_key.as_deref().is_some_and(|k| !k.is_empty())
+        self.narrative_llm_url
+            .as_deref()
+            .is_some_and(|u| !u.is_empty())
+            && self
+                .narrative_llm_key
+                .as_deref()
+                .is_some_and(|k| !k.is_empty())
     }
 
     pub fn supergrok(&self) -> crate::oauth_llm::SuperGrokOauthConfig {

@@ -129,11 +129,7 @@ pub fn project_tick(
 
 fn scores_from_rows(rows: Vec<(String, i64, i64)>) -> Vec<SessionScore> {
     rows.into_iter()
-        .map(|(handle, score, seq)| SessionScore {
-            handle,
-            score,
-            seq,
-        })
+        .map(|(handle, score, seq)| SessionScore { handle, score, seq })
         .collect()
 }
 
@@ -182,13 +178,12 @@ pub async fn ingest_tick(
     .await?;
 
     let Some((tick_id,)) = inserted else {
-        let existing: Uuid = sqlx::query_scalar(
-            "SELECT id FROM er_ticks WHERE session_id = $1 AND seq = $2",
-        )
-        .bind(&env.session_id)
-        .bind(env.seq as i64)
-        .fetch_one(db)
-        .await?;
+        let existing: Uuid =
+            sqlx::query_scalar("SELECT id FROM er_ticks WHERE session_id = $1 AND seq = $2")
+                .bind(&env.session_id)
+                .bind(env.seq as i64)
+                .fetch_one(db)
+                .await?;
         return Ok(IngestResult {
             inserted: false,
             tick_id: existing,

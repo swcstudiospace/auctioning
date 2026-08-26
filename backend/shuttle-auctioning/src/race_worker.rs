@@ -64,11 +64,10 @@ pub async fn overdue_open_races(
     db: &PgPool,
     max_race_secs: u64,
 ) -> Result<Vec<(String, i64)>, sqlx::Error> {
-    let rows: Vec<(String, i64, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT project_pda, race_id, opened_at FROM races WHERE status = 'open'",
-    )
-    .fetch_all(db)
-    .await?;
+    let rows: Vec<(String, i64, DateTime<Utc>)> =
+        sqlx::query_as("SELECT project_pda, race_id, opened_at FROM races WHERE status = 'open'")
+            .fetch_all(db)
+            .await?;
     let now = Utc::now();
     Ok(rows
         .into_iter()
@@ -87,7 +86,8 @@ mod tests {
     use chrono::TimeZone;
 
     fn ts(offset_secs: i64) -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 8, 26, 12, 0, 0).unwrap() + chrono::Duration::seconds(offset_secs)
+        Utc.with_ymd_and_hms(2026, 8, 26, 12, 0, 0).unwrap()
+            + chrono::Duration::seconds(offset_secs)
     }
 
     fn cfg() -> WorkerConfig {

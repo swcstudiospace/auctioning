@@ -210,16 +210,9 @@ pub async fn approve_handler(
     State(state): State<crate::AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<QueueRow>> {
-    apply_status(
-        &state.db,
-        id,
-        PublishStatus::Approved,
-        None,
-        None,
-        false,
-    )
-    .await
-    .map(Json)
+    apply_status(&state.db, id, PublishStatus::Approved, None, None, false)
+        .await
+        .map(Json)
 }
 
 pub async fn skip_handler(
@@ -291,11 +284,7 @@ mod tests {
         for from in PublishStatus::ALL {
             for to in PublishStatus::ALL {
                 let expect = legal.contains(&(from, to));
-                assert_eq!(
-                    legal_transition(from, to),
-                    expect,
-                    "{from:?} -> {to:?}"
-                );
+                assert_eq!(legal_transition(from, to), expect, "{from:?} -> {to:?}");
             }
         }
     }

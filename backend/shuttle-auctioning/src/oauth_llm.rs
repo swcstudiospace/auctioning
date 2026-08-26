@@ -48,7 +48,9 @@ impl SuperGrokOauthConfig {
             token_url: token_url
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| "https://grok.ego.engineer/token".into()),
-            client_id: client_id.filter(|s| !s.is_empty()).unwrap_or_else(|| "grok".into()),
+            client_id: client_id
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "grok".into()),
             client_secret: client_secret.unwrap_or_default(),
             redirect_uri: redirect_uri.unwrap_or_default(),
             scope: "mcp".into(),
@@ -71,7 +73,10 @@ pub struct AuthStart {
     pub state: String,
 }
 
-pub async fn start_login(db: &PgPool, cfg: &SuperGrokOauthConfig) -> Result<AuthStart, sqlx::Error> {
+pub async fn start_login(
+    db: &PgPool,
+    cfg: &SuperGrokOauthConfig,
+) -> Result<AuthStart, sqlx::Error> {
     let state = Uuid::new_v4().to_string();
     let verifier = Uuid::new_v4().simple().to_string();
     sqlx::query("INSERT INTO oauth_states (state, code_verifier) VALUES ($1, $2)")
@@ -212,7 +217,13 @@ pub async fn exchange_code(
         .access_token
         .filter(|t| !t.is_empty())
         .ok_or_else(|| anyhow::anyhow!("missing access_token"))?;
-    store_tokens(db, &access, tokens.refresh_token.as_deref(), tokens.expires_in).await?;
+    store_tokens(
+        db,
+        &access,
+        tokens.refresh_token.as_deref(),
+        tokens.expires_in,
+    )
+    .await?;
     Ok(())
 }
 
@@ -309,7 +320,6 @@ pub async fn polish(
     }
     Ok(body)
 }
-
 
 fn check_ingest(state: &crate::AppState, headers: &HeaderMap) -> AppResult<()> {
     match &state.cfg.ingest_secret {
@@ -469,7 +479,10 @@ mod tests {
         let fail = generate_narrative(&inp, Some(&RefreshFailEnricher), at);
         assert_eq!(off, out);
         assert_eq!(off, fail);
-        assert!(off.posts.iter().all(|p| p.source == NarrativeSource::Template));
+        assert!(off
+            .posts
+            .iter()
+            .all(|p| p.source == NarrativeSource::Template));
     }
 
     #[test]
@@ -489,7 +502,10 @@ mod tests {
         let inp = input();
         let e = GroundedEnricher { inner: polish_ok };
         let bundle = generate_narrative(&inp, Some(&e), inp.occurred_at);
-        assert!(bundle.posts.iter().all(|p| p.source == NarrativeSource::Llm));
+        assert!(bundle
+            .posts
+            .iter()
+            .all(|p| p.source == NarrativeSource::Llm));
         assert!(bundle.posts[0].body.starts_with("POLISH"));
     }
 

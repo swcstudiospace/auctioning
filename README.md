@@ -65,12 +65,16 @@ id is deployed.
 - `GET /v1/races/windows/{slug}/grid` — live windowed grid + pending events
 - `POST /v1/races/windows/{slug}/snapshot` — persist ranks + narrative events
 - `GET /v1/races/windows/{slug}/events` — overtake / photo-finish / lead-change log
+- `POST /v1/races/windows/{slug}/ticks` — MagicBlock ER tick ingest (`X-Auctioning-Ingest`)
+- `GET /v1/races/sessions/{session_id}/grid` — session ranks from `er_ticks`
 
-## Narrative tape (SLICE A)
+## Narrative tape (SLICE A + publish)
 
 Templates turn each `race_event` into X / TikTok / Instagram / newsletter /
-timeline copy. LLM polish is optional (`NARRATIVE_LLM_URL` + `NARRATIVE_LLM_KEY`);
-missing or failed polish still returns the template.
+timeline copy. SuperGrok Heavy OAuth is the live polish path (`SUPERGROK_*`
+secrets); logged-out / failed polish still returns the template. Operator
+approval is required before a post is marked published — no auto-post to
+social networks.
 
 ```bash
 cargo test -p shuttle-auctioning narrative
@@ -78,8 +82,10 @@ cargo test -p shuttle-auctioning narrative
 
 - `POST /v1/races/windows/{slug}/events/{event_id}/narrate`
 - `GET /v1/races/windows/{slug}/tape`
+- `GET /v1/oauth/supergrok/login` / `callback` / `status`
+- `GET /v1/narrative/queue`
+- `POST /v1/narrative/posts/{id}/approve|skip|mark-published`
 
-MagicBlock ER ticks into the grid are **not** in this slice.
 
 ## Deployment
 
@@ -101,5 +107,7 @@ framing. See `docs/LEGAL.md` and the `/legal` page of the marketing site.
 
 ## Next slice
 
-Narrative content generation (templates + optional LLM polish) that consumes
-`race_events`, or the live-grid polish on MagicBlock ER ticks.
+- Real MagicBlock ER delegate + WS tick subscribe (worker currently pings ER
+  and logs overdue open races; HTTP settle already exists).
+- Leptos `/p/{handle}` telemetry page + marketing "Launch app" URL.
+- Anchor real program id, committed IDL, CI workflows, ToS/privacy pages.

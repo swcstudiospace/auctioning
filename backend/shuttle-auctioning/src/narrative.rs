@@ -117,7 +117,9 @@ impl NarrativeInput {
     pub fn from_row(row: &RaceEventRow, window: Option<&RaceWindowRow>) -> Option<Self> {
         let kind = RaceEventKind::parse(&row.event_type)?;
         let project = row.project_handle.clone().unwrap_or_default();
-        if project.is_empty() && kind != RaceEventKind::RaceStart && kind != RaceEventKind::RaceFinish
+        if project.is_empty()
+            && kind != RaceEventKind::RaceStart
+            && kind != RaceEventKind::RaceFinish
         {
             return None;
         }
@@ -144,12 +146,7 @@ impl NarrativeInput {
 }
 
 fn payload_ranks(payload: &serde_json::Value) -> (Option<i32>, Option<i32>, Option<i64>) {
-    let i32_of = |k: &str| {
-        payload
-            .get(k)
-            .and_then(|v| v.as_i64())
-            .map(|n| n as i32)
-    };
+    let i32_of = |k: &str| payload.get(k).and_then(|v| v.as_i64()).map(|n| n as i32);
     let i64_of = |k: &str| payload.get(k).and_then(|v| v.as_i64());
     (i32_of("from_rank"), i32_of("to_rank"), i64_of("rp_delta"))
 }
@@ -209,7 +206,10 @@ pub fn why_clauses(input: &NarrativeInput) -> Vec<String> {
                     format!("{} unseated {} at P1", input.project_handle, other)
                 }
                 RaceEventKind::PhotoFinish => {
-                    format!("{} and {} are split by a photo-finish gap", input.project_handle, other)
+                    format!(
+                        "{} and {} are split by a photo-finish gap",
+                        input.project_handle, other
+                    )
                 }
                 _ => format!("{} vs {}", input.project_handle, other),
             });
@@ -244,7 +244,9 @@ pub fn why_clauses(input: &NarrativeInput) -> Vec<String> {
 }
 
 fn ts(input: &NarrativeInput) -> String {
-    input.occurred_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    input
+        .occurred_at
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
 fn verb(kind: RaceEventKind) -> &'static str {
@@ -324,7 +326,9 @@ pub fn render_channel(channel: NarrativeChannel, input: &NarrativeInput, why: &[
             if !why.is_empty() {
                 beats.push(format!("[6s] VO: {}.", why.join(". ")));
             }
-            beats.push(format!("[12s] End card: auctioning.lol · event {id_short}."));
+            beats.push(format!(
+                "[12s] End card: auctioning.lol · event {id_short}."
+            ));
             beats.join("\n")
         }
         NarrativeChannel::InstagramCarousel => {
@@ -538,7 +542,10 @@ mod tests {
     fn templates_cover_every_channel_with_timestamp_and_why() {
         let input = overtake();
         let bundle = generate_narrative(&input, None, at());
-        assert!(bundle.posts.iter().all(|p| p.source == NarrativeSource::Template));
+        assert!(bundle
+            .posts
+            .iter()
+            .all(|p| p.source == NarrativeSource::Template));
         assert_bundle_complete(&bundle, &input);
     }
 
@@ -550,7 +557,10 @@ mod tests {
         let noop = generate_narrative(&input, Some(&NoopEnricher), at());
         assert_eq!(off, fail);
         assert_eq!(off, noop);
-        assert!(fail.posts.iter().all(|p| p.source == NarrativeSource::Template));
+        assert!(fail
+            .posts
+            .iter()
+            .all(|p| p.source == NarrativeSource::Template));
         assert_bundle_complete(&fail, &input);
     }
 
@@ -570,7 +580,10 @@ mod tests {
     fn successful_enricher_marks_llm_source() {
         let input = overtake();
         let bundle = generate_narrative(&input, Some(&EchoEnricher), at());
-        assert!(bundle.posts.iter().all(|p| p.source == NarrativeSource::Llm));
+        assert!(bundle
+            .posts
+            .iter()
+            .all(|p| p.source == NarrativeSource::Llm));
         assert!(bundle.posts[0].body.starts_with("POLISHED::"));
     }
 
