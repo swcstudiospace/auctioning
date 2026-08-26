@@ -411,7 +411,7 @@ pub struct GroundedEnricher<F> {
 
 impl<F> LlmEnricher for GroundedEnricher<F>
 where
-    F: Fn(NarrativeChannel, &str, &NarrativeInput) -> Result<String, LlmError>,
+    F: for<'a, 'b> Fn(NarrativeChannel, &'a str, &'b NarrativeInput) -> Result<String, LlmError>,
 {
     fn enrich(
         &self,
@@ -434,6 +434,14 @@ mod tests {
     use crate::narrative::{generate_narrative, NarrativeSource};
     use crate::race_engine::RaceEventKind;
     use chrono::TimeZone;
+
+    fn invent(_: NarrativeChannel, _: &str, _: &NarrativeInput) -> Result<String, LlmError> {
+        Ok("beta jumped to P9 with 999 RP".into())
+    }
+
+    fn polish_ok(_: NarrativeChannel, tmpl: &str, _: &NarrativeInput) -> Result<String, LlmError> {
+        Ok(format!("POLISH P1 P3 12 RP {tmpl}"))
+    }
 
     fn input() -> NarrativeInput {
         NarrativeInput {
@@ -467,9 +475,7 @@ mod tests {
     #[test]
     fn invented_rank_is_discarded() {
         let inp = input();
-        let e = GroundedEnricher {
-            inner: |_, _, _| Ok("beta jumped to P9 with 999 RP".into()),
-        };
+        let e = GroundedEnricher { inner: invent };
         let bundle = generate_narrative(&inp, Some(&e), inp.occurred_at);
         assert!(bundle
             .posts
@@ -481,9 +487,7 @@ mod tests {
     #[test]
     fn grounded_polish_is_accepted() {
         let inp = input();
-        let e = GroundedEnricher {
-            inner: |_, tmpl, _| Ok(format!("POLISH P1 P3 12 RP {tmpl}")),
-        };
+        let e = GroundedEnricher { inner: polish_ok };
         let bundle = generate_narrative(&inp, Some(&e), inp.occurred_at);
         assert!(bundle.posts.iter().all(|p| p.source == NarrativeSource::Llm));
         assert!(bundle.posts[0].body.starts_with("POLISH"));
