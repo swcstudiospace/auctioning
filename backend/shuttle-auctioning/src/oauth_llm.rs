@@ -310,16 +310,6 @@ pub async fn polish(
     Ok(body)
 }
 
-fn oauth_cfg_from_env() -> SuperGrokOauthConfig {
-    SuperGrokOauthConfig::from_parts(
-        std::env::var("SUPERGROK_AUTHORIZE_URL").ok(),
-        std::env::var("SUPERGROK_TOKEN_URL").ok(),
-        std::env::var("SUPERGROK_CLIENT_ID").ok(),
-        std::env::var("SUPERGROK_CLIENT_SECRET").ok(),
-        std::env::var("SUPERGROK_REDIRECT_URI").ok(),
-        std::env::var("SUPERGROK_COMPLETION_URL").ok(),
-    )
-}
 
 fn check_ingest(state: &crate::AppState, headers: &HeaderMap) -> AppResult<()> {
     match &state.cfg.ingest_secret {
@@ -353,7 +343,7 @@ pub async fn login_handler(
     headers: HeaderMap,
 ) -> AppResult<Json<serde_json::Value>> {
     check_ingest(&state, &headers)?;
-    let cfg = oauth_cfg_from_env();
+    let cfg = state.cfg.supergrok();
     if !cfg.configured() {
         return Err(AppError::BadRequest("oauth not configured".into()));
     }
@@ -374,7 +364,7 @@ pub async fn callback_handler(
     State(state): State<crate::AppState>,
     Query(q): Query<CallbackQuery>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let cfg = oauth_cfg_from_env();
+    let cfg = state.cfg.supergrok();
     exchange_code(&state.db, &cfg, &q.state, &q.code)
         .await
         .map_err(|_| AppError::Unauthorized)?;

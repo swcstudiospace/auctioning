@@ -6,6 +6,7 @@ use crate::ledger;
 use crate::narrative;
 use crate::race_engine;
 use crate::whop::{self, WhopWebhookEvent};
+use crate::oauth_llm;
 use crate::onchain::{self, PrepareLogPaidRequest, PrepareLogPaidResponse, PrepareOpenRaceRequest, PrepareOpenRaceResponse, PrepareRegisterRequest, PrepareRegisterResponse, PrepareSettleRaceRequest, PrepareSettleRaceResponse};
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
@@ -590,7 +591,29 @@ pub async fn narrate_event(
     let input = narrative::NarrativeInput::from_row(&row, Some(&window)).ok_or_else(|| {
         AppError::BadRequest("event is missing a project or has an unknown type".into())
     })?;
-    let bundle = narrative::generate_narrative(&input, None, chrono::Utc::now());
+    let mut bundle = narrative::generate_narrative(&input, None, chrono::Utc::now());
+    let oauth_cfg = state.cfg.supergrok();
+    if !oauth_cfg.completion_url.is_empty() {
+        if let Ok(Some(token)) = oauth_llm::load_access_token(&state.db).await {
+            for post in bundle.posts.iter_mut() {
+                match oauth_llm::polish(
+                    &oauth_cfg,
+                    &token,
+                    post.channel,
+                    &post.body,
+                    &input,
+                )
+                .await
+                {
+                    Ok(body) => {
+                        post.body = body;
+                        post.source = narrative::NarrativeSource::Llm;
+                    }
+                    Err(_) => {}
+                }
+            }
+        }
+    }
     let stored = narrative::persist_bundle(&state.db, event_id, &bundle)
         .await
         .map_err(AppError::from)?;
