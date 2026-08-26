@@ -11,11 +11,16 @@
 
 ## 1. Solana program (public RP ledger)
 
+Program id: `3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs` (`declare_id!` + IDL).
+The program keypair lives at gitignored `keys/auctioning-keypair.json` — never
+under `target/deploy` (`cargo build-sbf` recreates that tree).
+
 ```bash
+# From repo root
+mkdir -p programs/auctioning/target/deploy
+cp keys/auctioning-keypair.json programs/auctioning/target/deploy/auctioning-keypair.json
 cd programs/auctioning
-# Replace the placeholder program id in src/state.rs declare_id! with your
-# keypair's address BEFORE first deploy, then:
-anchor keys list                      # confirm
+anchor keys list                      # confirm matches declare_id!
 anchor build                          # emits target/deploy/auctioning.so
 anchor deploy --provider.cluster mainnet
 ```
@@ -43,15 +48,17 @@ Secrets (Secrets.toml / `shuttle secret set`):
 | WEEKLY_FREE_RP | stipend size (default 100) |
 | PROGRAM_ID | deployed program id (base58) |
 | MAINNET_RPC | Helius/Triton endpoint preferred over public RPC |
-| ER_RPC / ER_WS | MagicBlock ephemeral rollup endpoints |
+| ER_RPC / ER_WS | MagicBlock ephemeral rollup HTTP + websocket |
 | AUTHORITY_SECRET | backend race-settle keypair (base58). Prefer Vault in prod. |
 | MAX_RACE_SECS | forced settle window (default 300) |
 | INGEST_SECRET | shared secret for earn/import endpoints |
+| SUPERGROK_* | operator OAuth for narrative polish; empty secret = templates |
 
 Whop dashboard: point webhooks at `https://<shuttle-url>/v1/whop/webhook`.
 
-Boot behaviour: migrations 0001–0003 run automatically; content seeding and
-the expiry/reconciliation sweeps run on every start.
+Boot behaviour: migrations 0001–0006 run automatically; content seeding,
+expiry/reconciliation sweeps, and the race worker start on every boot.
+Empty `ER_WS` keeps the worker on ping-only; set it to arm tick subscribe.
 
 ## 3. Local Postgres smoke test
 

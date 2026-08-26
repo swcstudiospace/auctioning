@@ -71,6 +71,6 @@ Current flow for paid RP:
 - All PDA derivations are pinned in `tests/pda_contract.rs` — keep in sync with clients
 
 ## Next
-- Add proper IDL export (`anchor build` produces target/idl/auctioning.json)
-- Client can use the IDL for type-safe ix building
-- Add mainnet RPC + MagicBlock ER endpoints to config
+- IDL is committed at `programs/auctioning/idl/auctioning.json` (regenerate with `anchor build` after instruction changes).
+- Client can use the IDL for type-safe ix building.
+- Program keypair: `keys/auctioning-keypair.json` (gitignored); copy into `target/deploy` only at deploy time.

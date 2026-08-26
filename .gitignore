@@ -21,6 +21,7 @@ Secrets.toml
 .env
 .env.*
 !.env.example
+!**/.env.example
 
 # Leptos / Trunk
 dist/

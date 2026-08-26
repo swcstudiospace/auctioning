@@ -107,7 +107,7 @@ framing. See `docs/LEGAL.md` and the `/legal` page of the marketing site.
 
 ## Next slice
 
-- Fill `SUPERGROK_CLIENT_SECRET` + `SUPERGROK_REDIRECT_URI` in `Secrets.toml` (keys are present; empty secret = templates).
-- Set `ER_WS` to the MagicBlock websocket to arm tick subscribe (empty = ping only).
-- `anchor deploy` using gitignored `keys/auctioning-keypair.json` (program id `3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs`); copy into `target/deploy` only at deploy time.
-- Point marketing `NEXT_PUBLIC_APP_URL` at the hosted Leptos origin.
+- Fill `SUPERGROK_CLIENT_SECRET` + `SUPERGROK_REDIRECT_URI` in `Secrets.toml` (empty secret = templates).
+- Copy `Secrets.toml.example` → `Secrets.toml` so `ER_WS=wss://devnet-er.magicblock.app` arms tick subscribe.
+- `anchor deploy` using `keys/auctioning-keypair.json` (copy into `target/deploy` only at deploy time).
+- Production marketing: `NEXT_PUBLIC_APP_URL` (see `marketing/.env.example`).
