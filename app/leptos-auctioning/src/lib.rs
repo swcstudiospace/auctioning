@@ -545,9 +545,10 @@ fn ProjectPage(
     let alloc_count = RwSignal::new(None::<usize>);
     let load_error = RwSignal::new(None::<String>);
 
-    let support_handle = handle.clone();
+    let page_handle = RwSignal::new(handle);
+
     Effect::new(move |_| {
-        let handle = handle.clone();
+        let handle = page_handle.get_untracked();
         spawn_local(async move {
             match api_get(&format!("/v1/projects/{handle}")).await {
                 Ok(resp) if resp.status().as_u16() == 404 => {
@@ -595,30 +596,6 @@ fn ProjectPage(
         });
     });
 
-    let on_support = move |_| {
-        let Some(_addr) = wallet.get_untracked() else {
-            return;
-        };
-        let handle = support_handle.clone();
-        spawn_local(async move {
-            let req = SpendRequest {
-                wallet: &_addr,
-                amount: 25,
-                reason: "support-project",
-            };
-            let path = format!("/v1/projects/{handle}/support");
-            match api_post(&path, &req).await {
-                Ok(resp) if resp.status().is_success() => {
-                    refresh_rp(&_addr.clone(), rp, &load_error).await;
-                }
-                Ok(resp) if resp.status().as_u16() == 409 => {
-                    load_error.set(Some("Not enough RP for that.".into()));
-                }
-                Ok(resp) => load_error.set(Some(format!("support failed: {resp:?}"))),
-                Err(e) => load_error.set(Some(e)),
-            }
-        });
-    };
 
     view! {
         <section class="board">
@@ -654,14 +631,41 @@ fn ProjectPage(
                     Some(n) => format!("{n} allocations"),
                 }}
             </p>
-            <Show when=move || project.get().is_some()>
-                <Show
-                    when=move || wallet.get().is_some()
-                    fallback=view! { <p class="hint">"Connect on home to support"</p> }
-                >
-                    <button on:click=on_support>"Support +25"</button>
-                </Show>
+            <Show when=move || wallet.get().is_none() && project.get().is_some()>
+                <p class="hint">"Connect on home to support"</p>
             </Show>
+            <button
+                on:click=move |_| {
+                    let Some(_addr) = wallet.get_untracked() else {
+                        return;
+                    };
+                    if project.get_untracked().is_none() {
+                        return;
+                    }
+                    let handle = page_handle.get_untracked();
+                    spawn_local(async move {
+                        let req = SpendRequest {
+                            wallet: &_addr,
+                            amount: 25,
+                            reason: "support-project",
+                        };
+                        let path = format!("/v1/projects/{handle}/support");
+                        match api_post(&path, &req).await {
+                            Ok(resp) if resp.status().is_success() => {
+                                refresh_rp(&_addr.clone(), rp, &load_error).await;
+                            }
+                            Ok(resp) if resp.status().as_u16() == 409 => {
+                                load_error.set(Some("Not enough RP for that.".into()));
+                            }
+                            Ok(resp) => load_error.set(Some(format!("support failed: {resp:?}"))),
+                            Err(e) => load_error.set(Some(e)),
+                        }
+                    });
+                }
+                disabled=move || wallet.get().is_none() || project.get().is_none()
+            >
+                "Support +25"
+            </button>
         </section>
     }
 }
