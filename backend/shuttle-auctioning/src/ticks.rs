@@ -4,9 +4,14 @@
 //! may insert a *new* race_events row with origin='tick'. Allocation-derived
 //! rows (origin='event') are never updated.
 
-use crate::race_engine::{RaceEventKind, RaceWindowRow};
+use crate::error::{AppError, AppResult};
+use crate::race_engine::{self, RaceEventKind, RaceWindowRow};
 use auctioning_core::TickEnvelope;
+use axum::extract::{Path, State};
+use axum::http::HeaderMap;
+use axum::Json;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -308,6 +313,90 @@ pub async fn session_grid(
         .into_iter()
         .map(|(r, s)| (r, s.clone()))
         .collect())
+}
+
+fn check_ingest(state: &crate::AppState, headers: &HeaderMap) -> AppResult<()> {
+    match &state.cfg.ingest_secret {
+        None => Ok(()), // dev mode: open ingest
+        Some(secret) => {
+            let provided = headers
+                .get("x-auctioning-ingest")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default();
+            if constant_time_eq(provided.as_bytes(), secret.as_bytes()) {
+                Ok(())
+            } else {
+                Err(AppError::Unauthorized)
+            }
+        }
+    }
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
+}
+
+fn projection_json(p: &TickProjection) -> Value {
+    json!({
+        "kind": p.kind,
+        "handle": p.handle,
+        "other_handle": p.other_handle,
+        "from_rank": p.from_rank,
+        "to_rank": p.to_rank,
+        "title": p.title,
+        "summary": p.summary,
+    })
+}
+
+pub async fn ingest_window_tick(
+    State(state): State<crate::AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+    Json(env): Json<TickEnvelope>,
+) -> AppResult<Json<Value>> {
+    check_ingest(&state, &headers)?;
+    if env.session_id.is_empty() {
+        return Err(AppError::BadRequest("session_id required".into()));
+    }
+    // TickEnvelope.seq is u64 — always present after JSON decode.
+    let window = race_engine::window_by_slug(&state.db, &slug)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let result = ingest_tick(&state.db, &window, &env).await?;
+    Ok(Json(json!({
+        "inserted": result.inserted,
+        "tick_id": result.tick_id,
+        "event_id": result.event_id,
+        "projection": result.projection.as_ref().map(projection_json),
+        "window": slug,
+    })))
+}
+
+pub async fn session_grid_handler(
+    State(state): State<crate::AppState>,
+    Path(session_id): Path<String>,
+) -> AppResult<Json<Value>> {
+    let grid = session_grid(&state.db, &session_id).await?;
+    Ok(Json(json!({
+        "session_id": session_id,
+        "grid": grid
+            .into_iter()
+            .map(|(rank, s)| {
+                json!({
+                    "rank": rank,
+                    "handle": s.handle,
+                    "score": s.score,
+                    "seq": s.seq,
+                })
+            })
+            .collect::<Vec<_>>(),
+    })))
 }
 
 #[cfg(test)]
