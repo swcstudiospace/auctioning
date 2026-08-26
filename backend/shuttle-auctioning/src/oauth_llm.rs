@@ -5,9 +5,15 @@
 //! `oauth_tokens` and never returned on tape APIs or written to logs.
 //! Logged-out / refresh-fail / unusable completion → templates.
 
+use crate::error::{AppError, AppResult};
 use crate::narrative::{LlmEnricher, LlmError, NarrativeChannel, NarrativeInput};
+use anyhow;
+use axum::extract::{Query, State};
+use axum::http::HeaderMap;
+use axum::Json;
 use chrono::{Duration, Utc};
 use serde::Deserialize;
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -154,6 +160,62 @@ pub async fn load_access_token(db: &PgPool) -> Result<Option<String>, sqlx::Erro
         .await
 }
 
+/// Consume a one-time PKCE state row. Returns the stored `code_verifier`.
+pub async fn take_state(db: &PgPool, state: &str) -> Result<Option<String>, sqlx::Error> {
+    let verifier: Option<String> =
+        sqlx::query_scalar("SELECT code_verifier FROM oauth_states WHERE state = $1")
+            .bind(state)
+            .fetch_optional(db)
+            .await?;
+    if verifier.is_some() {
+        sqlx::query("DELETE FROM oauth_states WHERE state = $1")
+            .bind(state)
+            .execute(db)
+            .await?;
+    }
+    Ok(verifier)
+}
+
+/// Exchange an authorization code for tokens. Never logs access/refresh tokens.
+pub async fn exchange_code(
+    db: &PgPool,
+    cfg: &SuperGrokOauthConfig,
+    state: &str,
+    code: &str,
+) -> Result<(), anyhow::Error> {
+    let verifier = take_state(db, state)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("unknown oauth state"))?;
+    let body = format!(
+        "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}&code_verifier={}",
+        urlencoding(code),
+        urlencoding(&cfg.redirect_uri),
+        urlencoding(&cfg.client_id),
+        urlencoding(&cfg.client_secret),
+        urlencoding(&verifier),
+    );
+    let resp = reqwest::Client::new()
+        .post(&cfg.token_url)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(body)
+        .send()
+        .await
+        .map_err(|_| anyhow::anyhow!("token exchange request failed"))?;
+    if !resp.status().is_success() {
+        return Err(anyhow::anyhow!("token exchange http error"));
+    }
+    let tokens: TokenResponse = resp
+        .json()
+        .await
+        .map_err(|_| anyhow::anyhow!("token exchange parse error"))?;
+    let access = tokens
+        .access_token
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("missing access_token"))?;
+    store_tokens(db, &access, tokens.refresh_token.as_deref(), tokens.expires_in).await?;
+    Ok(())
+}
+
 /// Reject LLM copy that invents ranks / RP amounts not on the source.
 pub fn grounded(body: &str, input: &NarrativeInput) -> bool {
     if body.trim().is_empty() {
@@ -191,6 +253,138 @@ pub fn grounded(body: &str, input: &NarrativeInput) -> bool {
         return false;
     }
     true
+}
+
+/// Optional SuperGrok polish. Empty completion_url → templates. Failures → templates.
+pub async fn polish(
+    cfg: &SuperGrokOauthConfig,
+    access_token: &str,
+    channel: NarrativeChannel,
+    template: &str,
+    input: &NarrativeInput,
+) -> Result<String, LlmError> {
+    let _ = channel;
+    if cfg.completion_url.is_empty() {
+        return Err(LlmError::NotConfigured);
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|_| LlmError::Failed("http".into()))?;
+    let payload = json!({
+        "model": "grok-4",
+        "messages": [
+            {
+                "role": "system",
+                "content": "Polish this race copy. Do not invent ranks or RP amounts."
+            },
+            {
+                "role": "user",
+                "content": template
+            }
+        ]
+    });
+    let resp = client
+        .post(&cfg.completion_url)
+        .header("Authorization", format!("Bearer {access_token}"))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|_| LlmError::Failed("http".into()))?;
+    if !resp.status().is_success() {
+        return Err(LlmError::Failed("http".into()));
+    }
+    let value: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|_| LlmError::Failed("parse".into()))?;
+    let body = value
+        .pointer("/choices/0/message/content")
+        .and_then(|v| v.as_str())
+        .or_else(|| value.get("content").and_then(|v| v.as_str()))
+        .ok_or_else(|| LlmError::Failed("parse".into()))?
+        .to_string();
+    if !grounded(&body, input) {
+        return Err(LlmError::Failed("ungrounded".into()));
+    }
+    Ok(body)
+}
+
+fn oauth_cfg_from_env() -> SuperGrokOauthConfig {
+    SuperGrokOauthConfig::from_parts(
+        std::env::var("SUPERGROK_AUTHORIZE_URL").ok(),
+        std::env::var("SUPERGROK_TOKEN_URL").ok(),
+        std::env::var("SUPERGROK_CLIENT_ID").ok(),
+        std::env::var("SUPERGROK_CLIENT_SECRET").ok(),
+        std::env::var("SUPERGROK_REDIRECT_URI").ok(),
+        std::env::var("SUPERGROK_COMPLETION_URL").ok(),
+    )
+}
+
+fn check_ingest(state: &crate::AppState, headers: &HeaderMap) -> AppResult<()> {
+    match &state.cfg.ingest_secret {
+        None => Ok(()),
+        Some(secret) => {
+            let provided = headers
+                .get("x-auctioning-ingest")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default();
+            if constant_time_eq(provided.as_bytes(), secret.as_bytes()) {
+                Ok(())
+            } else {
+                Err(AppError::Unauthorized)
+            }
+        }
+    }
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
+}
+
+pub async fn login_handler(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<serde_json::Value>> {
+    check_ingest(&state, &headers)?;
+    let cfg = oauth_cfg_from_env();
+    if !cfg.configured() {
+        return Err(AppError::BadRequest("oauth not configured".into()));
+    }
+    let start = start_login(&state.db, &cfg).await?;
+    Ok(Json(json!({
+        "authorize_url": start.authorize_url,
+        "state": start.state,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CallbackQuery {
+    pub code: String,
+    pub state: String,
+}
+
+pub async fn callback_handler(
+    State(state): State<crate::AppState>,
+    Query(q): Query<CallbackQuery>,
+) -> AppResult<Json<serde_json::Value>> {
+    let cfg = oauth_cfg_from_env();
+    exchange_code(&state.db, &cfg, &q.state, &q.code)
+        .await
+        .map_err(|_| AppError::Unauthorized)?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+pub async fn status_handler(
+    State(state): State<crate::AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    Ok(Json(json!({ "logged_in": logged_in(&state.db).await? })))
 }
 
 pub struct LoggedOutEnricher;
@@ -312,5 +506,23 @@ mod tests {
         assert!(!grounded("they spent 50 RP", &inp));
         inp.rp_delta = Some(12);
         assert!(grounded("margin 12 RP at P1", &inp));
+    }
+
+    #[test]
+    fn grounded_still_holds_on_source_facts() {
+        let inp = input();
+        assert!(grounded("beta to P1 from P3 with 12 RP", &inp));
+        assert!(!grounded("beta jumped to P9", &inp));
+        assert!(!grounded("", &inp));
+    }
+
+    #[tokio::test]
+    async fn polish_empty_completion_url_is_not_configured() {
+        let cfg = SuperGrokOauthConfig::from_parts(None, None, None, None, None, None);
+        assert!(cfg.completion_url.is_empty());
+        let err = polish(&cfg, "tok", NarrativeChannel::Timeline, "tmpl", &input())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, LlmError::NotConfigured));
     }
 }
