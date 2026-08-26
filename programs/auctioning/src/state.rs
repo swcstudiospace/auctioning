@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("AuCT1oN1Ng111111111111111111111111111111111"); // PLACEHOLDER - replace after first mainnet deploy
+declare_id!("3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs"); // keypair lives in gitignored target/deploy; replace only after a new `anchor keys` if regenerating.
 
 /// Global protocol config. PDA ["config"].
 #[account]

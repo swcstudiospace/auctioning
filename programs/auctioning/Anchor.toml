@@ -3,15 +3,14 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-auctioning = "AuCT1oN1Ng111111111111111111111111111111111"
+auctioning = "3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs"
 
 [programs.devnet]
-auctioning = "AuCT1oN1Ng111111111111111111111111111111111"
+auctioning = "3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs"
 
 [programs.mainnet]
-# TODO: replace with real program ID after first `anchor deploy --provider.cluster mainnet-beta`
-# Run `anchor keys sync` or manually update declare_id! + this after deploy.
-auctioning = "AuCT1oN1Ng111111111111111111111111111111111"
+# sync after redeploy
+auctioning = "3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs"
 
 [registry]
 url = "https://api.apr.dev"

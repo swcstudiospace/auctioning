@@ -16,10 +16,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             auctioning<span>.lol</span>
           </Link>
           <div>
+            <a href="/tos/">Terms</a>
+            <a href="/privacy/">Privacy</a>
             <a href="/legal/">Legal</a>
-            <Link href="/" className="cta">
+            <a
+              href={process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}
+              className="cta"
+            >
               Launch app
-            </Link>
+            </a>
           </div>
         </nav>
         {children}

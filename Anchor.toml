@@ -3,8 +3,14 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-# PLACEHOLDER — replace after `anchor keys list` / first deploy. Do not invent.
-auctioning = "AuCT1oN1Ng111111111111111111111111111111111"
+auctioning = "3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs"
+
+[programs.devnet]
+auctioning = "3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs"
+
+[programs.mainnet]
+# sync after redeploy
+auctioning = "3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs"
 
 [registry]
 url = "https://api.apr.dev"

@@ -15,14 +15,14 @@ mod pda_contract {
 
     #[test]
     fn config_pda_layout() {
-        let pid = Pubkey::from_str_const("AuCT1oN1Ng111111111111111111111111111111111");
+        let pid = ::auctioning::ID;
         let (pda, _bump) = find(Config::SEED, &[], &pid);
         assert_ne!(pda, Pubkey::default());
     }
 
     #[test]
     fn project_pda_layout() {
-        let pid = Pubkey::from_str_const("AuCT1oN1Ng111111111111111111111111111111111");
+        let pid = ::auctioning::ID;
         let owner = Pubkey::new_unique();
         let (pda, _) = find(Project::SEED, &[owner.as_ref()], &pid);
         assert_ne!(pda, Pubkey::default());
@@ -34,7 +34,7 @@ mod pda_contract {
     #[test]
     fn receipt_pda_uses_preincrement_seq() {
         // Mirrors log_paid_rp: seq == receipt_count BEFORE increment.
-        let pid = Pubkey::from_str_const("AuCT1oN1Ng111111111111111111111111111111111");
+        let pid = ::auctioning::ID;
         let project = Pubkey::new_unique();
         let count: u64 = 7; // what the client read from Project.receipt_count
         let (pda, _) = find(
@@ -47,7 +47,7 @@ mod pda_contract {
 
     #[test]
     fn race_pda_uses_race_id_le_bytes() {
-        let pid = Pubkey::from_str_const("AuCT1oN1Ng111111111111111111111111111111111");
+        let pid = ::auctioning::ID;
         let project = Pubkey::new_unique();
         let race_id: u64 = 3;
         let (a, _) = find(
