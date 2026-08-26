@@ -49,7 +49,7 @@ impl AppConfig {
                 .unwrap_or(100),
             program_id: store
                 .get("PROGRAM_ID")
-                .unwrap_or_else(|| "AuCT1oN1Ng111111111111111111111111111111111".to_string()),
+                .unwrap_or_else(|| "3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs".to_string()),
             mainnet_rpc: store
                 .get("MAINNET_RPC")
                 .unwrap_or_else(|| "https://api.mainnet-beta.solana.com".into()),

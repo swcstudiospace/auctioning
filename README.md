@@ -107,7 +107,7 @@ framing. See `docs/LEGAL.md` and the `/legal` page of the marketing site.
 
 ## Next slice
 
-- Real MagicBlock ER delegate + WS tick subscribe (worker currently pings ER
-  and logs overdue open races; HTTP settle already exists).
-- Leptos `/p/{handle}` telemetry page + marketing "Launch app" URL.
-- Anchor real program id, committed IDL, CI workflows, ToS/privacy pages.
+- Fill `SUPERGROK_CLIENT_SECRET` + `SUPERGROK_REDIRECT_URI` in `Secrets.toml` (keys are present; empty secret = templates).
+- Set `ER_WS` to the MagicBlock websocket to arm tick subscribe (empty = ping only).
+- `anchor deploy` with gitignored `programs/auctioning/target/deploy/auctioning-keypair.json` (program id `3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs`).
+- Point marketing `NEXT_PUBLIC_APP_URL` at the hosted Leptos origin.

@@ -1,5 +1,5 @@
-use anchor_lang::prelude::*;
 use ::auctioning::{Config, Project, Race, RaceResult};
+use anchor_lang::prelude::*;
 
 #[test]
 fn race_result_serializes_roundtrip() {

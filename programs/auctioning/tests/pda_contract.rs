@@ -1,5 +1,5 @@
-use anchor_lang::prelude::*;
 use ::auctioning::{Config, Project, Race, RaceResult, RpReceipt};
+use anchor_lang::prelude::*;
 
 /// Deterministic PDA derivation contract: clients (Leptos UI, Shuttle settle
 /// worker) must derive exactly these addresses. These tests pin the layout so

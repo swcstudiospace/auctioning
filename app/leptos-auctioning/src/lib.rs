@@ -109,7 +109,10 @@ impl Phantom {
         let value = wasm_bindgen_futures::JsFuture::from(promise)
             .await
             .map_err(|e| format!("send rejected: {e:?}"))?;
-        value.as_string().filter(|s| !s.is_empty()).ok_or_else(|| "no signature".to_string())
+        value
+            .as_string()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "no signature".to_string())
     }
 }
 
@@ -192,7 +195,6 @@ fn project_handle_from_location() -> Option<String> {
     }
 }
 
-
 /// Top-level app shell with the connect button + main flows.
 #[component]
 pub fn App() -> impl IntoView {
@@ -250,7 +252,9 @@ pub fn App() -> impl IntoView {
             error.set(None);
             match api_post("/v1/rp/claim-weekly", &WeeklyClaimRequest { wallet: &addr }).await {
                 Ok(resp) if resp.status().is_success() => {
-                    notice.set(Some("Weekly promo RP claimed — free bucket, non-cashable.".into()));
+                    notice.set(Some(
+                        "Weekly promo RP claimed — free bucket, non-cashable.".into(),
+                    ));
                     refresh_rp(&addr, rp, &error).await;
                 }
                 Ok(resp) if resp.status().as_u16() == 429 => {
@@ -493,7 +497,11 @@ fn ProjectBoard(wallet: RwSignal<Option<String>>, rp: RwSignal<Option<RpView>>) 
         };
         spawn_local(async move {
             // v1 flow: support 25 free RP per click; a slider comes later.
-            let req = SpendRequest { wallet: &_addr, amount: 25, reason: "support-project" };
+            let req = SpendRequest {
+                wallet: &_addr,
+                amount: 25,
+                reason: "support-project",
+            };
             let path = format!("/v1/projects/{handle}/support");
             match api_post(&path, &req).await {
                 Ok(resp) if resp.status().is_success() => {
@@ -554,12 +562,10 @@ fn ProjectPage(
                 Ok(resp) if resp.status().as_u16() == 404 => {
                     not_found.set(true);
                 }
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<ProjectRow>().await {
-                        Ok(p) => project.set(Some(p)),
-                        Err(e) => load_error.set(Some(format!("project parse: {e}"))),
-                    }
-                }
+                Ok(resp) if resp.status().is_success() => match resp.json::<ProjectRow>().await {
+                    Ok(p) => project.set(Some(p)),
+                    Err(e) => load_error.set(Some(format!("project parse: {e}"))),
+                },
                 Ok(resp) => load_error.set(Some(format!("project unavailable ({resp:?})"))),
                 Err(e) => load_error.set(Some(e)),
             }
@@ -595,7 +601,6 @@ fn ProjectPage(
             }
         });
     });
-
 
     view! {
         <section class="board">
@@ -670,7 +675,6 @@ fn ProjectPage(
     }
 }
 
-
 async fn fetch_live_grid(
     slots: RwSignal<Vec<GridSlot>>,
     load_error: RwSignal<Option<String>>,
@@ -735,31 +739,66 @@ fn Web3Actions(wallet: RwSignal<Option<String>>) -> impl IntoView {
     let current_program_id = RwSignal::new(String::new());
 
     let on_register_onchain = move |_| {
-        let Some(addr) = wallet.get_untracked() else { return; };
+        let Some(addr) = wallet.get_untracked() else {
+            return;
+        };
         let h = handle.get_untracked();
-        if h.trim().is_empty() { return; }
+        if h.trim().is_empty() {
+            return;
+        }
 
         spawn_local(async move {
             busy.set(true);
             notice.set(None);
             #[derive(serde::Serialize)]
-            struct PrepReq { wallet: String, handle: String }
-            let prep_req = PrepReq { wallet: addr.clone(), handle: h.clone() };
+            struct PrepReq {
+                wallet: String,
+                handle: String,
+            }
+            let prep_req = PrepReq {
+                wallet: addr.clone(),
+                handle: h.clone(),
+            };
             match api_post("/v1/onchain/prepare-register", &prep_req).await {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(prep) = resp.json::<serde_json::Value>().await {
-                        let tx_b64 = prep.get("tx_base64").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let tx_b64 = prep
+                            .get("tx_base64")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         if tx_b64.is_empty() {
                             notice.set(Some("backend did not return tx".into()));
                         } else {
                             match Phantom::send_transaction(&addr, &tx_b64).await {
                                 Ok(sig) => {
-                                    let pda = prep.get("project_pda").and_then(|v| v.as_str()).unwrap_or("");
-                                    let prog = prep.get("program_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let pda = prep
+                                        .get("project_pda")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("");
+                                    let prog = prep
+                                        .get("program_id")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     current_program_id.set(prog.clone());
-                                    let tx_url = format!("https://explorer.solana.com/tx/{}?cluster=mainnet", sig);
-                                    let pda_url = if !pda.is_empty() { format!(" https://explorer.solana.com/address/{}?cluster=mainnet", pda) } else { "".to_string() };
-                                    notice.set(Some(format!("Registered! sig:{}... TX:{} PDA:{}{} Program: {}", &sig[..12], tx_url, pda, pda_url, prog)));
+                                    let tx_url = format!(
+                                        "https://explorer.solana.com/tx/{}?cluster=mainnet",
+                                        sig
+                                    );
+                                    let pda_url = if !pda.is_empty() {
+                                        format!(" https://explorer.solana.com/address/{}?cluster=mainnet", pda)
+                                    } else {
+                                        "".to_string()
+                                    };
+                                    notice.set(Some(format!(
+                                        "Registered! sig:{}... TX:{} PDA:{}{} Program: {}",
+                                        &sig[..12],
+                                        tx_url,
+                                        pda,
+                                        pda_url,
+                                        prog
+                                    )));
                                     handle.set(String::new());
                                 }
                                 Err(e) => notice.set(Some(format!("send failed: {}", e))),
@@ -775,35 +814,81 @@ fn Web3Actions(wallet: RwSignal<Option<String>>) -> impl IntoView {
     };
 
     let on_log_paid = move |_| {
-        let Some(addr) = wallet.get_untracked() else { return; };
+        let Some(addr) = wallet.get_untracked() else {
+            return;
+        };
         let amt = log_rp.get_untracked();
         let lam = log_lamports.get_untracked();
         let m = log_memo.get_untracked();
         let seq = log_seq.get_untracked();
-        if amt == 0 || lam == 0 || m.trim().is_empty() { return; }
+        if amt == 0 || lam == 0 || m.trim().is_empty() {
+            return;
+        }
         spawn_local(async move {
             busy.set(true);
             notice.set(None);
             #[derive(serde::Serialize)]
-            struct LogReq { wallet: String, rp_amount: u64, lamports_paid: u64, memo: String, current_receipt_count: u64 }
-            let req = LogReq { wallet: addr.clone(), rp_amount: amt, lamports_paid: lam, memo: m.clone(), current_receipt_count: seq };
+            struct LogReq {
+                wallet: String,
+                rp_amount: u64,
+                lamports_paid: u64,
+                memo: String,
+                current_receipt_count: u64,
+            }
+            let req = LogReq {
+                wallet: addr.clone(),
+                rp_amount: amt,
+                lamports_paid: lam,
+                memo: m.clone(),
+                current_receipt_count: seq,
+            };
             match api_post("/v1/onchain/prepare-log-paid", &req).await {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(prep) = resp.json::<serde_json::Value>().await {
-                        let tx_b64 = prep.get("tx_base64").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let tx_b64 = prep
+                            .get("tx_base64")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         if tx_b64.is_empty() {
                             notice.set(Some("no tx from backend".into()));
                         } else {
                             match Phantom::send_transaction(&addr, &tx_b64).await {
                                 Ok(sig) => {
-                                    let pda = prep.get("project_pda").and_then(|v| v.as_str()).unwrap_or("");
-                                    let receipt = prep.get("receipt_pda").and_then(|v| v.as_str()).unwrap_or("");
-                                    let prog = prep.get("program_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let pda = prep
+                                        .get("project_pda")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("");
+                                    let receipt = prep
+                                        .get("receipt_pda")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("");
+                                    let prog = prep
+                                        .get("program_id")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     current_program_id.set(prog.clone());
-                                    let tx_url = format!("https://explorer.solana.com/tx/{}?cluster=mainnet", sig);
-                                    let receipt_url = if !receipt.is_empty() { format!(" https://explorer.solana.com/address/{}?cluster=mainnet", receipt) } else { "".to_string() };
-                                    notice.set(Some(format!("Paid RP logged! sig:{}... TX:{} Receipt:{}{} Program: {}", &sig[..12], tx_url, receipt, receipt_url, prog)));
-                                    log_rp.set(0); log_lamports.set(0); log_memo.set(String::new());
+                                    let tx_url = format!(
+                                        "https://explorer.solana.com/tx/{}?cluster=mainnet",
+                                        sig
+                                    );
+                                    let receipt_url = if !receipt.is_empty() {
+                                        format!(" https://explorer.solana.com/address/{}?cluster=mainnet", receipt)
+                                    } else {
+                                        "".to_string()
+                                    };
+                                    notice.set(Some(format!(
+                                        "Paid RP logged! sig:{}... TX:{} Receipt:{}{} Program: {}",
+                                        &sig[..12],
+                                        tx_url,
+                                        receipt,
+                                        receipt_url,
+                                        prog
+                                    )));
+                                    log_rp.set(0);
+                                    log_lamports.set(0);
+                                    log_memo.set(String::new());
                                 }
                                 Err(e) => notice.set(Some(format!("send err: {}", e))),
                             }
@@ -818,7 +903,9 @@ fn Web3Actions(wallet: RwSignal<Option<String>>) -> impl IntoView {
 
     let list_races = move |_| {
         let pda = race_pda.get_untracked();
-        if pda.trim().is_empty() { return; }
+        if pda.trim().is_empty() {
+            return;
+        }
         spawn_local(async move {
             busy.set(true);
             match api_get(&format!("/v1/races/{}", pda)).await {
@@ -837,27 +924,51 @@ fn Web3Actions(wallet: RwSignal<Option<String>>) -> impl IntoView {
     };
 
     let on_open_race = move |_| {
-        let Some(addr) = wallet.get_untracked() else { return; };
+        let Some(addr) = wallet.get_untracked() else {
+            return;
+        };
         let pda = race_pda.get_untracked();
         let nonce = race_nonce.get_untracked();
-        if pda.trim().is_empty() { return; }
+        if pda.trim().is_empty() {
+            return;
+        }
         spawn_local(async move {
             busy.set(true);
             #[derive(serde::Serialize)]
-            struct OpenReq { wallet: String, project_pda: String, current_race_nonce: u64 }
-            let req = OpenReq { wallet: addr.clone(), project_pda: pda.clone(), current_race_nonce: nonce };
+            struct OpenReq {
+                wallet: String,
+                project_pda: String,
+                current_race_nonce: u64,
+            }
+            let req = OpenReq {
+                wallet: addr.clone(),
+                project_pda: pda.clone(),
+                current_race_nonce: nonce,
+            };
             match api_post("/v1/onchain/prepare-open-race", &req).await {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(prep) = resp.json::<serde_json::Value>().await {
-                        let tx_b64 = prep.get("tx_base64").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let tx_b64 = prep
+                            .get("tx_base64")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         if tx_b64.is_empty() {
                             notice.set(Some("no tx".into()));
                         } else {
                             match Phantom::send_transaction(&addr, &tx_b64).await {
                                 Ok(sig) => {
-                                    let prog = prep.get("program_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let prog = prep
+                                        .get("program_id")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     current_program_id.set(prog.clone());
-                                    notice.set(Some(format!("Race opened on L2! sig {}... Program: {}", &sig[..12], prog)));
+                                    notice.set(Some(format!(
+                                        "Race opened on L2! sig {}... Program: {}",
+                                        &sig[..12],
+                                        prog
+                                    )));
                                 }
                                 Err(e) => notice.set(Some(format!("send err: {}", e))),
                             }
@@ -871,31 +982,65 @@ fn Web3Actions(wallet: RwSignal<Option<String>>) -> impl IntoView {
     };
 
     let on_settle_race = move |_| {
-        let Some(addr) = wallet.get_untracked() else { return; };
+        let Some(addr) = wallet.get_untracked() else {
+            return;
+        };
         let pda = race_pda.get_untracked();
         let race_id = settle_race_id.get_untracked();
-        if pda.trim().is_empty() { return; }
+        if pda.trim().is_empty() {
+            return;
+        }
         spawn_local(async move {
             busy.set(true);
             // Demo: single sample result using the connected wallet as entrant
             #[derive(serde::Serialize)]
-            struct Res { entrant: String, score: u64, rank: u16 }
+            struct Res {
+                entrant: String,
+                score: u64,
+                rank: u16,
+            }
             #[derive(serde::Serialize)]
-            struct SettleReq { wallet: String, project_pda: String, race_id: u64, results: Vec<Res> }
-            let sample = vec![Res { entrant: addr.clone(), score: 100, rank: 0 }];
-            let req = SettleReq { wallet: addr.clone(), project_pda: pda.clone(), race_id, results: sample };
+            struct SettleReq {
+                wallet: String,
+                project_pda: String,
+                race_id: u64,
+                results: Vec<Res>,
+            }
+            let sample = vec![Res {
+                entrant: addr.clone(),
+                score: 100,
+                rank: 0,
+            }];
+            let req = SettleReq {
+                wallet: addr.clone(),
+                project_pda: pda.clone(),
+                race_id,
+                results: sample,
+            };
             match api_post("/v1/onchain/prepare-settle-race", &req).await {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(prep) = resp.json::<serde_json::Value>().await {
-                        let tx_b64 = prep.get("tx_base64").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let tx_b64 = prep
+                            .get("tx_base64")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         if tx_b64.is_empty() {
                             notice.set(Some("no tx".into()));
                         } else {
                             match Phantom::send_transaction(&addr, &tx_b64).await {
                                 Ok(sig) => {
-                                    let prog = prep.get("program_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let prog = prep
+                                        .get("program_id")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     current_program_id.set(prog.clone());
-                                    notice.set(Some(format!("Race settled on-chain! sig {}... Program: {}", &sig[..12], prog)));
+                                    notice.set(Some(format!(
+                                        "Race settled on-chain! sig {}... Program: {}",
+                                        &sig[..12],
+                                        prog
+                                    )));
                                 }
                                 Err(e) => notice.set(Some(format!("send err: {}", e))),
                             }
@@ -915,15 +1060,28 @@ fn Web3Actions(wallet: RwSignal<Option<String>>) -> impl IntoView {
     };
 
     let check_whop = move |_| {
-        let Some(addr) = wallet.get_untracked() else { return; };
+        let Some(addr) = wallet.get_untracked() else {
+            return;
+        };
         spawn_local(async move {
             busy.set(true);
             match api_get(&format!("/v1/whop/membership/{}", addr)).await {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(v) = resp.json::<serde_json::Value>().await {
-                        let active = v.get("active_membership").and_then(|b| b.as_bool()).unwrap_or(false);
+                        let active = v
+                            .get("active_membership")
+                            .and_then(|b| b.as_bool())
+                            .unwrap_or(false);
                         membership.set(Some(active));
-                        notice.set(Some(format!("Whop: {} for {}", if active { "ACTIVE membership" } else { "no active membership" }, &addr[..8])));
+                        notice.set(Some(format!(
+                            "Whop: {} for {}",
+                            if active {
+                                "ACTIVE membership"
+                            } else {
+                                "no active membership"
+                            },
+                            &addr[..8]
+                        )));
                     }
                 }
                 _ => notice.set(Some("Whop check failed (backend or key)".into())),
@@ -998,7 +1156,7 @@ fn Web3Actions(wallet: RwSignal<Option<String>>) -> impl IntoView {
             </div>
             <p class="hint">"Register (on-chain project) or log paid RP receipt via Phantom + Anchor for Solana provenance. (L2 races via MagicBlock.)"</p>
             <Show when=move || !current_program_id.get().is_empty()>
-                <p class="onchain-program">"On-chain Program: " {move || current_program_id.get()} 
+                <p class="onchain-program">"On-chain Program: " {move || current_program_id.get()}
                 <a href=move || format!("https://explorer.solana.com/address/{}?cluster=mainnet", current_program_id.get()) target="_blank">" (view on explorer)"</a> " (set PROGRAM_ID secret for real mainnet deploy)"</p>
             </Show>
             <Show when=move || notice.get().is_some()>

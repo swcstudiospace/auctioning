@@ -11,13 +11,13 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
-use solana_sdk::instruction::{AccountMeta, Instruction};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -105,7 +105,12 @@ impl RaceSession {
         format!("{project}:{race_id}")
     }
 
-    pub fn envelope(&self, seq: u64, tick: &EntrantTick, signature: Option<String>) -> TickEnvelope {
+    pub fn envelope(
+        &self,
+        seq: u64,
+        tick: &EntrantTick,
+        signature: Option<String>,
+    ) -> TickEnvelope {
         TickEnvelope {
             session_id: Self::session_id_for(&self.project, self.race_id),
             seq,
@@ -131,7 +136,11 @@ impl RaceSession {
             t.score = t.score.max(score);
             t.updated_at_ms = now;
         } else {
-            self.ticks.push(EntrantTick { entrant, score, updated_at_ms: now });
+            self.ticks.push(EntrantTick {
+                entrant,
+                score,
+                updated_at_ms: now,
+            });
         }
     }
 
@@ -139,7 +148,9 @@ impl RaceSession {
     pub fn final_ranking(&self) -> Vec<crate::settlement::RaceResultEntry> {
         let mut ranked: Vec<_> = self.ticks.clone();
         ranked.sort_by(|a, b| {
-            b.score.cmp(&a.score).then(a.updated_at_ms.cmp(&b.updated_at_ms))
+            b.score
+                .cmp(&a.score)
+                .then(a.updated_at_ms.cmp(&b.updated_at_ms))
         });
         ranked
             .into_iter()
@@ -253,12 +264,8 @@ pub async fn send_settlement(
         &results,
     )?;
     let recent = session.mainnet_client.get_latest_blockhash().await?;
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&authority.pubkey()),
-        &[authority],
-        recent,
-    );
+    let tx =
+        Transaction::new_signed_with_payer(&[ix], Some(&authority.pubkey()), &[authority], recent);
     let sig = session
         .mainnet_client
         .send_and_confirm_transaction(&tx)
@@ -294,7 +301,8 @@ pub fn parse_pubkey(s: &str) -> Result<Pubkey> {
 
 /// MagicBlock ER delegation program id (parsed from the pinned constant).
 pub fn delegation_program_id() -> Pubkey {
-    parse_pubkey(er_programs::DELEGATION_PROGRAM_ID).unwrap_or_else(|_| Pubkey::new_from_array([0; 32]))
+    parse_pubkey(er_programs::DELEGATION_PROGRAM_ID)
+        .unwrap_or_else(|_| Pubkey::new_from_array([0; 32]))
 }
 
 /// Build a `delegate` instruction against the MagicBlock delegation program.
@@ -467,7 +475,10 @@ mod tests {
     #[test]
     fn account_subscribe_request_method_and_id() {
         let v = account_subscribe_request(7, "Abc");
-        assert_eq!(v.get("method").and_then(|m| m.as_str()), Some("accountSubscribe"));
+        assert_eq!(
+            v.get("method").and_then(|m| m.as_str()),
+            Some("accountSubscribe")
+        );
         assert_eq!(v.get("id").and_then(|i| i.as_u64()), Some(7));
     }
 

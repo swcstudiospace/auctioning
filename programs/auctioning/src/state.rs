@@ -36,7 +36,6 @@ pub struct Project {
     /// Number of immutable receipts written (drives receipt PDAs).
     pub receipt_count: u64,
     /// Arbitrary UTF-8 handle (max 32 bytes), e.g. "beanz-coffee-brisbane".
-
     pub handle: String,
     /// Bump seed.
     pub bump: u8,
@@ -78,7 +77,6 @@ pub struct RpReceipt {
     /// Sequence number within the project (monotonic).
     pub seq: u64,
     /// Free-form memo (max 64 bytes). Never contains PII.
-
     pub memo: String,
 }
 
@@ -112,7 +110,6 @@ pub struct Race {
     /// Unix timestamp when the race settled. 0 while open.
     pub settled_at: i64,
     /// Final ranking payload committed at settle (max 16 entrants).
-
     pub results: Vec<RaceResult>,
     /// 0 = open, 1 = settled.
     pub status: u8,
