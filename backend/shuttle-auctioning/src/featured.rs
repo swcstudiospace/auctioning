@@ -4,6 +4,8 @@
 //! velocity. Each signal is clamped 0..=100 before weighting:
 //! `25*O + 20*P + 15*U + 10*M + 10*T + 10*D + 10*A`.
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone)]
 pub struct FeaturedSignals {
     pub window_slug: String,
@@ -19,7 +21,7 @@ pub struct FeaturedSignals {
     pub p1_p3_cover_rp: i64,        // RP covering P1–P3 for because-line
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeaturedRace {
     pub window_slug: String,
     pub window_name: String,

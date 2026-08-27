@@ -1,6 +1,8 @@
 //! HTTP handlers.
 
 use crate::catalog;
+use crate::championship;
+use crate::featured;
 use crate::error::{AppError, AppResult};
 use crate::ledger;
 use crate::narrative;
@@ -666,4 +668,284 @@ pub async fn open_afterburner(
         .await
         .map_err(AppError::from)?;
     Ok(Json(json!({ "opened": card })))
+}
+
+// ---------------------------------------------------------------------------
+// Featured race + championship + calendar
+// ---------------------------------------------------------------------------
+
+pub async fn races_featured(
+    State(state): State<crate::AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let windows = race_engine::list_windows(&state.db, 50)
+        .await
+        .map_err(AppError::from)?;
+    let featured = featured_race_from_windows(&state.db, &windows, chrono::Utc::now()).await?;
+    Ok(Json(json!({ "featured": featured })))
+}
+
+pub async fn championship_standings(
+    State(state): State<crate::AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let rows = championship::load_finished_session_rows(&state.db)
+        .await
+        .map_err(AppError::from)?;
+    let results = championship::session_results_from_rows(&rows);
+    let standings = championship::accumulate(&results);
+    Ok(Json(json!({ "standings": standings })))
+}
+
+pub async fn races_calendar(
+    State(state): State<crate::AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let now = chrono::Utc::now();
+    let windows = race_engine::list_windows(&state.db, 50)
+        .await
+        .map_err(AppError::from)?;
+    let active_card = crate::events::active_card(&state.db, now)
+        .await
+        .map_err(AppError::from)?;
+    let featured = featured_race_from_windows(&state.db, &windows, now).await?;
+    Ok(Json(json!({
+        "windows": windows,
+        "active_card": active_card,
+        "featured": featured,
+    })))
+}
+
+async fn featured_race_from_windows(
+    db: &sqlx::PgPool,
+    windows: &[race_engine::RaceWindowRow],
+    now: chrono::DateTime<chrono::Utc>,
+) -> AppResult<Option<featured::FeaturedRace>> {
+    let mut signals = Vec::new();
+    for window in windows {
+        if !window.status.eq_ignore_ascii_case("live") {
+            continue;
+        }
+        let (grid, _pending) = race_engine::grid_for_window(db, window)
+            .await
+            .map_err(AppError::from)?;
+        let events = race_engine::events_for_window(db, window.id, 100)
+            .await
+            .map_err(AppError::from)?;
+        signals.push(featured_signals_for(window, &grid, &events, now));
+    }
+    Ok(featured::pick_featured(&signals))
+}
+
+fn featured_signals_for(
+    window: &race_engine::RaceWindowRow,
+    grid: &[race_engine::GridSlot],
+    events: &[race_engine::RaceEventRow],
+    now: chrono::DateTime<chrono::Utc>,
+) -> featured::FeaturedSignals {
+    let overtake_count = events
+        .iter()
+        .filter(|e| e.event_type.eq_ignore_ascii_case("overtake"))
+        .count() as i64;
+    let has_photo = events
+        .iter()
+        .any(|e| e.event_type.eq_ignore_ascii_case("photo_finish"));
+    let has_dark_horse = events
+        .iter()
+        .any(|e| e.event_type.eq_ignore_ascii_case("dark_horse_rise"));
+
+    featured::FeaturedSignals {
+        window_slug: window.slug.clone(),
+        window_name: window.name.clone(),
+        overtake_density: (overtake_count.saturating_mul(20)).clamp(0, 100),
+        photo_finish_pressure: photo_finish_pressure(grid, has_photo),
+        unique_payers: 0,
+        mix: mix_score(grid),
+        time_remaining: time_remaining_score(window, now),
+        freshness: if has_dark_horse { 100 } else { 0 },
+        attention: 0,
+        overtakes_in_window: overtake_count,
+        p1_p3_cover_rp: p1_p3_cover_rp(grid),
+    }
+}
+
+fn photo_finish_pressure(grid: &[race_engine::GridSlot], has_photo: bool) -> i64 {
+    if !has_photo {
+        return 0;
+    }
+    const LARGE: i64 = 10_000;
+    let mut gaps: Vec<i64> = grid
+        .iter()
+        .filter(|s| (1..=5).contains(&s.rank))
+        .map(|s| s.gap_to_next.unwrap_or(LARGE))
+        .collect();
+    if gaps.is_empty() {
+        return 0;
+    }
+    gaps.sort_unstable();
+    let n = gaps.len();
+    let median = if n % 2 == 1 {
+        gaps[n / 2]
+    } else {
+        let a = gaps[n / 2 - 1];
+        let b = gaps[n / 2];
+        a.saturating_add(b) / 2
+    };
+    (100i64.saturating_sub(median.saturating_mul(10))).clamp(0, 100)
+}
+
+fn mix_score(grid: &[race_engine::GridSlot]) -> i64 {
+    let mut any_paid = false;
+    let mut any_community = false;
+    for slot in grid.iter().filter(|s| (1..=5).contains(&s.rank)) {
+        if slot.paid_rp > 0 {
+            any_paid = true;
+        }
+        if slot.community_rp > 0 {
+            any_community = true;
+        }
+    }
+    match (any_paid, any_community) {
+        (true, true) => 100,
+        (true, false) => 40,
+        (false, true) => 20,
+        (false, false) => 0,
+    }
+}
+
+fn time_remaining_score(
+    window: &race_engine::RaceWindowRow,
+    now: chrono::DateTime<chrono::Utc>,
+) -> i64 {
+    let remaining = (window.ends_at - now).num_seconds().max(0);
+    let sprint = window.race_type.eq_ignore_ascii_case("GREEN_FLAG")
+        || window.race_type.eq_ignore_ascii_case("SPRINT")
+        || window.race_type.eq_ignore_ascii_case("PACE_LAP");
+    if sprint && remaining < 3600 {
+        60.max((remaining.saturating_mul(100) / 3600).clamp(0, 100))
+    } else {
+        let window_secs = (window.ends_at - window.starts_at).num_seconds().max(1);
+        remaining
+            .saturating_mul(100)
+            .saturating_div(window_secs)
+            .clamp(0, 100)
+    }
+}
+
+fn p1_p3_cover_rp(grid: &[race_engine::GridSlot]) -> i64 {
+    if grid.len() < 2 {
+        0
+    } else {
+        let p3 = 2.min(grid.len() - 1);
+        grid[0].race_rp.saturating_sub(grid[p3].race_rp)
+    }
+}
+
+#[cfg(test)]
+mod featured_signal_tests {
+    use super::*;
+    use chrono::{Duration, TimeZone, Utc};
+
+    fn slot(
+        rank: i32,
+        race_rp: i64,
+        gap: Option<i64>,
+        paid: i64,
+        community: i64,
+    ) -> race_engine::GridSlot {
+        race_engine::GridSlot {
+            handle: format!("p{rank}"),
+            rank,
+            race_rp,
+            velocity: 0,
+            momentum: 0,
+            gap_to_leader: 0,
+            gap_to_next: gap,
+            pace_pct: None,
+            lifetime_rank: None,
+            burst_rp: 0,
+            sustain_windows: 0,
+            paid_rp: paid,
+            community_rp: community,
+            badge: None,
+            last_overtake: None,
+            clicks: 0,
+            hover_footer: String::new(),
+        }
+    }
+
+    fn window(race_type: &str, starts: chrono::DateTime<Utc>, ends: chrono::DateTime<Utc>) -> race_engine::RaceWindowRow {
+        race_engine::RaceWindowRow {
+            id: uuid::Uuid::from_u128(1),
+            slug: "green".into(),
+            name: "Green Flag".into(),
+            race_type: race_type.into(),
+            status: "live".into(),
+            tag: None,
+            starts_at: starts,
+            ends_at: ends,
+        }
+    }
+
+    #[test]
+    fn mix_paid_and_community_is_100() {
+        let grid = vec![
+            slot(1, 100, Some(10), 80, 20),
+            slot(2, 90, Some(5), 0, 90),
+        ];
+        assert_eq!(mix_score(&grid), 100);
+    }
+
+    #[test]
+    fn mix_paid_only_is_40() {
+        let grid = vec![slot(1, 100, Some(10), 100, 0), slot(2, 50, None, 50, 0)];
+        assert_eq!(mix_score(&grid), 40);
+    }
+
+    #[test]
+    fn mix_community_only_is_20() {
+        let grid = vec![slot(1, 100, Some(10), 0, 100)];
+        assert_eq!(mix_score(&grid), 20);
+    }
+
+    #[test]
+    fn p1_minus_p3_cover() {
+        let grid = vec![
+            slot(1, 100, Some(10), 0, 0),
+            slot(2, 90, Some(40), 0, 0),
+            slot(3, 50, None, 0, 0),
+        ];
+        assert_eq!(p1_p3_cover_rp(&grid), 50);
+    }
+
+    #[test]
+    fn p1_p3_with_two_slots_uses_last() {
+        let grid = vec![slot(1, 100, Some(20), 0, 0), slot(2, 80, None, 0, 0)];
+        assert_eq!(p1_p3_cover_rp(&grid), 20);
+    }
+
+    #[test]
+    fn photo_pressure_zero_without_event() {
+        let grid = vec![slot(1, 100, Some(2), 0, 0)];
+        assert_eq!(photo_finish_pressure(&grid, false), 0);
+    }
+
+    #[test]
+    fn photo_pressure_from_median_gap() {
+        // ranks 1..=5 gaps 2,4,6 → median 4 → 100-40 = 60
+        let grid = vec![
+            slot(1, 100, Some(2), 0, 0),
+            slot(2, 98, Some(4), 0, 0),
+            slot(3, 94, Some(6), 0, 0),
+        ];
+        assert_eq!(photo_finish_pressure(&grid, true), 60);
+    }
+
+    #[test]
+    fn sprint_under_an_hour_floors_at_60() {
+        let now = Utc.with_ymd_and_hms(2026, 8, 27, 12, 0, 0).unwrap();
+        let w = window(
+            "GREEN_FLAG",
+            now - Duration::hours(1),
+            now + Duration::minutes(10),
+        );
+        assert_eq!(time_remaining_score(&w, now), 60);
+    }
 }

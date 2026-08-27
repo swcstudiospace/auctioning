@@ -11,9 +11,11 @@
 // Public for the Postgres-backed smoke test (tests/smoke_db.rs); internal
 // modules stay `pub` but the crate surface is otherwise unused externally.
 pub mod catalog;
+pub mod championship;
 pub mod config;
 mod error;
 pub mod events;
+pub mod featured;
 mod handlers;
 pub mod ledger;
 pub mod narrative;
@@ -116,6 +118,9 @@ async fn main(
         .route("/v1/races/open", post(handlers::races_open))
         .route("/v1/grid", get(handlers::lifetime_grid))
         .route("/v1/races/windows", get(handlers::list_race_windows))
+        .route("/v1/races/featured", get(handlers::races_featured))
+        .route("/v1/races/calendar", get(handlers::races_calendar))
+        .route("/v1/championship", get(handlers::championship_standings))
         .route(
             "/v1/races/windows/{slug}/grid",
             get(handlers::race_window_grid),

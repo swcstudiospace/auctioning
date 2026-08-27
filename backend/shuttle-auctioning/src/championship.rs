@@ -4,6 +4,11 @@
 //! Sprint / Green Flag: P1..P3 = 8,7,6.
 //! Fastest pace flag: +1. No purchasable velocity.
 
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use std::collections::BTreeMap;
+use uuid::Uuid;
+
 const GP_TABLE: [i32; 10] = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 const SPRINT_TABLE: [i32; 3] = [8, 7, 6];
 
@@ -50,7 +55,7 @@ pub struct SessionResult {
     pub fastest_pace: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChampionshipRow {
     pub handle: String,
     pub points: i32,
@@ -122,6 +127,78 @@ fn session_points(r: &SessionResult) -> i32 {
         SessionKind::Sprint => sprint_points(r.place),
     };
     base + fastest_pace_bonus(r.fastest_pace)
+}
+
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct FinishedSnapshotRow {
+    pub project_handle: String,
+    pub rank: i32,
+    pub velocity: i64,
+    pub race_type: String,
+    pub race_window_id: Uuid,
+}
+
+/// Latest rank snapshot per finished/archived scoring window.
+pub async fn load_finished_session_rows(
+    db: &PgPool,
+) -> Result<Vec<FinishedSnapshotRow>, sqlx::Error> {
+    sqlx::query_as::<_, FinishedSnapshotRow>(
+        r#"
+        WITH latest AS (
+            SELECT race_window_id, MAX(snapshot_at) AS snapshot_at
+            FROM rank_snapshots
+            GROUP BY race_window_id
+        )
+        SELECT s.project_handle, s.rank, s.velocity, w.race_type, s.race_window_id
+        FROM rank_snapshots s
+        JOIN latest l ON l.race_window_id = s.race_window_id AND l.snapshot_at = s.snapshot_at
+        JOIN race_windows w ON w.id = s.race_window_id
+        WHERE w.status IN ('finished', 'archived')
+          AND w.race_type IN ('GRAND_TOUR','GRAND_PRIX','GREEN_FLAG','SPRINT','PACE_LAP')
+        ORDER BY s.race_window_id, s.rank
+        "#,
+    )
+    .fetch_all(db)
+    .await
+}
+
+/// Group snapshot rows into session results. Fastest pace is max velocity;
+/// ties keep the first row in rank order.
+pub fn session_results_from_rows(rows: &[FinishedSnapshotRow]) -> Vec<SessionResult> {
+    let mut grouped: BTreeMap<Uuid, Vec<&FinishedSnapshotRow>> = BTreeMap::new();
+    for row in rows {
+        grouped.entry(row.race_window_id).or_default().push(row);
+    }
+    let mut results = Vec::new();
+    for slots in grouped.values() {
+        let race_type = slots.first().map(|s| s.race_type.as_str()).unwrap_or("");
+        let kind = if race_type.eq_ignore_ascii_case("GREEN_FLAG")
+            || race_type.eq_ignore_ascii_case("SPRINT")
+            || race_type.eq_ignore_ascii_case("PACE_LAP")
+        {
+            SessionKind::Sprint
+        } else {
+            SessionKind::GrandTour
+        };
+        let mut fastest_handle: Option<&str> = None;
+        let mut fastest_vel = i64::MIN;
+        for slot in slots {
+            if fastest_handle.is_none() || slot.velocity > fastest_vel {
+                fastest_vel = slot.velocity;
+                fastest_handle = Some(slot.project_handle.as_str());
+            }
+        }
+        for slot in slots {
+            results.push(SessionResult {
+                handle: slot.project_handle.clone(),
+                place: slot.rank,
+                kind,
+                fastest_pace: fastest_handle == Some(slot.project_handle.as_str()),
+            });
+        }
+    }
+    results
 }
 
 #[cfg(test)]
@@ -245,4 +322,62 @@ mod tests {
         assert_eq!(rows[0].wins, 0);
         assert_eq!(rows[0].best_finish, 4);
     }
+
+    #[test]
+    fn empty_snapshots_empty_sessions_and_standings() {
+        assert!(session_results_from_rows(&[]).is_empty());
+        assert!(accumulate(&session_results_from_rows(&[])).is_empty());
+    }
+
+    #[test]
+    fn sprint_window_fastest_pace_is_max_velocity_first_on_tie() {
+        let w = Uuid::from_u128(1);
+        let rows = [
+            FinishedSnapshotRow {
+                project_handle: "alpha".into(),
+                rank: 1,
+                velocity: 50,
+                race_type: "SPRINT".into(),
+                race_window_id: w,
+            },
+            FinishedSnapshotRow {
+                project_handle: "beta".into(),
+                rank: 2,
+                velocity: 80,
+                race_type: "SPRINT".into(),
+                race_window_id: w,
+            },
+            FinishedSnapshotRow {
+                project_handle: "gamma".into(),
+                rank: 3,
+                velocity: 80,
+                race_type: "SPRINT".into(),
+                race_window_id: w,
+            },
+        ];
+        let results = session_results_from_rows(&rows);
+        assert_eq!(results.len(), 3);
+        assert!(results.iter().all(|r| r.kind == SessionKind::Sprint));
+        assert_eq!(results[0].handle, "alpha");
+        assert!(!results[0].fastest_pace);
+        assert_eq!(results[1].handle, "beta");
+        assert!(results[1].fastest_pace);
+        assert!(!results[2].fastest_pace);
+    }
+
+    #[test]
+    fn grand_tour_kind_from_grand_prix_type() {
+        let w = Uuid::from_u128(2);
+        let rows = [FinishedSnapshotRow {
+            project_handle: "alpha".into(),
+            rank: 1,
+            velocity: 10,
+            race_type: "GRAND_PRIX".into(),
+            race_window_id: w,
+        }];
+        let results = session_results_from_rows(&rows);
+        assert_eq!(results[0].kind, SessionKind::GrandTour);
+        assert!(results[0].fastest_pace);
+    }
+
 }
