@@ -9,6 +9,9 @@ use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 
+mod race_board;
+use race_board::RaceBoard;
+
 /// Backend API base URL. Overridable at build time:
 ///   AUCTIONING_API_BASE=https://auctioning-backend.shuttle.app trunk build
 pub fn api_base() -> String {
@@ -164,9 +167,25 @@ pub struct GridSlot {
     pub pace_pct: Option<i64>,
     #[serde(default)]
     pub lifetime_rank: Option<i32>,
+    #[serde(default)]
+    pub burst_rp: i64,
+    #[serde(default)]
+    pub sustain_windows: i32,
+    #[serde(default)]
+    pub paid_rp: i64,
+    #[serde(default)]
+    pub community_rp: i64,
+    #[serde(default)]
+    pub badge: Option<String>,
+    #[serde(default)]
+    pub last_overtake: Option<String>,
+    #[serde(default)]
+    pub clicks: i64,
+    #[serde(default)]
+    pub hover_footer: String,
 }
 
-async fn api_get(path: &str) -> Result<reqwest::Response, String> {
+pub(crate) async fn api_get(path: &str) -> Result<reqwest::Response, String> {
     reqwest::Client::new()
         .get(format!("{}{path}", api_base()))
         .send()
@@ -329,7 +348,7 @@ pub fn App() -> impl IntoView {
                 </section>
 
                 <EventBanner />
-                <LiveGrid />
+                <RaceBoard />
                 <RaceTape />
                 <ProjectBoard wallet=wallet rp=rp />
                 <Web3Actions wallet=wallet />
@@ -382,67 +401,6 @@ fn EventBanner() -> impl IntoView {
     }
 }
 
-/// Live race grid derived from the private allocation ledger.
-#[component]
-fn LiveGrid() -> impl IntoView {
-    let slots = RwSignal::new(Vec::<GridSlot>::new());
-    let load_error = RwSignal::new(None::<String>);
-    let busy = RwSignal::new(false);
-
-    Effect::new(move |_| {
-        spawn_local(async move {
-            fetch_live_grid(slots, load_error, busy).await;
-        });
-    });
-
-    view! {
-        <section class="live-grid">
-            <header class="grid-head">
-                <h2>"Live Grid"</h2>
-                <button class="btn-claim" on:click=move |_| spawn_local(async move { fetch_live_grid(slots, load_error, busy).await; }) disabled=busy>
-                    {move || if busy.get() { "Refreshing…" } else { "Refresh" }}
-                </button>
-            </header>
-            <p class="hint">"Ranks, velocity and gaps are derived from the allocation ledger. Free RP never goes on-chain."</p>
-            <Show when=move || load_error.get().is_some()>
-                <p class="error">{move || load_error.get().unwrap_or_default()}</p>
-            </Show>
-            <Show
-                when=move || !slots.get().is_empty()
-                fallback=view! { <p class="hint">"No race fuel yet — support a project to put it on the grid."</p> }
-            >
-                <table>
-                    <thead>
-                        <tr>
-                            <th>"P"</th>
-                            <th>"Project"</th>
-                            <th>"Race RP"</th>
-                            <th>"Vel"</th>
-                            <th>"Mom"</th>
-                            <th>"Pace"</th>
-                            <th>"Lifetime"</th>
-                            <th>"Gap"</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <For each=move || slots.get() key=|s| s.handle.clone() let:child>
-                            <tr>
-                                <td class="pos">{child.rank}</td>
-                                <td>{child.handle.clone()}</td>
-                                <td>{child.race_rp}</td>
-                                <td>{child.velocity}</td>
-                                <td>{child.momentum}</td>
-                                <td>{child.pace_pct.map(|p| format!("{p}%")).unwrap_or_else(|| "—".into())}</td>
-                                <td>{child.lifetime_rank.map(|r| format!("P{r}")).unwrap_or_else(|| "—".into())}</td>
-                                <td>{child.gap_to_leader}</td>
-                            </tr>
-                        </For>
-                    </tbody>
-                </table>
-            </Show>
-        </section>
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TapePost {
@@ -727,31 +685,6 @@ fn ProjectPage(
     }
 }
 
-async fn fetch_live_grid(
-    slots: RwSignal<Vec<GridSlot>>,
-    load_error: RwSignal<Option<String>>,
-    busy: RwSignal<bool>,
-) {
-    busy.set(true);
-    match api_get("/v1/grid").await {
-        Ok(resp) if resp.status().is_success() => {
-            #[derive(serde::Deserialize)]
-            struct Grid {
-                grid: Vec<GridSlot>,
-            }
-            match resp.json::<Grid>().await {
-                Ok(g) => {
-                    slots.set(g.grid);
-                    load_error.set(None);
-                }
-                Err(e) => load_error.set(Some(format!("grid parse: {e}"))),
-            }
-        }
-        Ok(resp) => load_error.set(Some(format!("grid unavailable ({resp:?})"))),
-        Err(e) => load_error.set(Some(e)),
-    }
-    busy.set(false);
-}
 
 async fn refresh_rp(addr: &str, rp: RwSignal<Option<RpView>>, err: &RwSignal<Option<String>>) {
     match api_get(&format!("/v1/rp/{addr}")).await {
