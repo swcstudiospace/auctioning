@@ -128,8 +128,51 @@ fn gap_display(gap: Option<i64>) -> String {
     gap.map(|n| n.to_string()).unwrap_or_else(|| "—".into())
 }
 
-fn pace_pct_display(pct: Option<i64>) -> String {
-    pct.map(|p| format!("{p}%")).unwrap_or_else(|| "—".into())
+fn progress_target(row: &GridSlot) -> i64 {
+    row.race_rp.saturating_add(row.gap_to_next.unwrap_or(0))
+}
+
+fn progress_fill_pct(race_rp: i64, target: i64) -> i64 {
+    if target > 0 {
+        race_rp.saturating_mul(100) / target
+    } else {
+        100
+    }
+}
+
+fn mix_line(paid_rp: i64, community_rp: i64) -> String {
+    let total = paid_rp.saturating_add(community_rp);
+    if total <= 0 {
+        "—".into()
+    } else {
+        let paid_pct = paid_rp.saturating_mul(100) / total;
+        let community_pct = community_rp.saturating_mul(100) / total;
+        format!("{paid_pct}% paid / {community_pct}% community")
+    }
+}
+
+fn avatar_tone(handle: &str) -> &'static str {
+    const TONES: [&str; 5] = [
+        "letter-avatar tone-0",
+        "letter-avatar tone-1",
+        "letter-avatar tone-2",
+        "letter-avatar tone-3",
+        "letter-avatar tone-4",
+    ];
+    let h = handle
+        .as_bytes()
+        .iter()
+        .fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(u32::from(*b)));
+    TONES[h as usize % TONES.len()]
+}
+
+fn avatar_initial(handle: &str) -> String {
+    handle
+        .chars()
+        .next()
+        .map(|c| c.to_uppercase().collect::<String>())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "?".into())
 }
 
 fn lifetime_display(rank: Option<i32>) -> String {
@@ -157,6 +200,15 @@ fn badge_class(badge: &str) -> &'static str {
 
 fn badge_label(badge: &str) -> String {
     badge.replace('_', " ")
+}
+
+#[component]
+fn LetterAvatar(handle: String) -> impl IntoView {
+    let class = avatar_tone(&handle);
+    let initial = avatar_initial(&handle);
+    view! {
+        <span class=class aria-hidden="true">{initial}</span>
+    }
 }
 
 fn go_garage(handle: &str) {
@@ -398,7 +450,7 @@ pub fn RaceBoard() -> impl IntoView {
                 {move || match tab.get() {
                     BoardTab::LiveGrid => view! {
                         <div class="grid-head">
-                            <p class="hint">"P# · handle · race RP · gap. Rank is windowed RP."</p>
+                            <p class="hint">"P# · handle · race RP · progress. Rank is windowed RP."</p>
                             <button
                                 class="btn-claim"
                                 on:click=move |_| spawn_local(async move {
@@ -508,7 +560,7 @@ fn RankRows(
                     <span>"P"</span>
                     <span>"Project"</span>
                     <span>"Race RP"</span>
-                    <span>"Gap"</span>
+                    <span>"Progress"</span>
                     <span></span>
                 </div>
                 <For each=move || rows.get() key=|s| s.handle.clone() let:child>
@@ -545,8 +597,13 @@ fn RankRow(
     let badge = row.badge.clone();
     let pos = format!("P{}", row.rank);
     let race_rp = row.race_rp;
-    let gap = gap_display(row.gap_to_next);
+    let target = progress_target(&row);
+    let fill = progress_fill_pct(race_rp, target);
+    let fill_style = format!("--fill:{fill}%");
+    let progress_label = format!("{race_rp} / {target} RP");
+    let progress_aria = progress_label.clone();
     let handle_label = row.handle.clone();
+    let avatar_handle = handle_label.clone();
 
     view! {
         <div
@@ -603,9 +660,17 @@ fn RankRow(
                 }
             >
                 <span class="pos">{pos}</span>
-                <span class="race-handle">{handle_label}</span>
+                <span class="race-driver">
+                    <LetterAvatar handle=avatar_handle />
+                    <span class="race-handle">{handle_label}</span>
+                </span>
                 <span class="race-rp">{race_rp}</span>
-                <span class="race-gap">{gap}</span>
+                <span class="race-progress" aria-label=progress_aria>
+                    <span class="race-progress-track">
+                        <span class="race-progress-fill" style=fill_style></span>
+                    </span>
+                    <span class="race-progress-label">{progress_label}</span>
+                </span>
                 <span class="race-badge">
                     {badge.map(|b| {
                         let class = badge_class(&b);
@@ -624,59 +689,70 @@ fn RankRow(
 #[component]
 fn HoverCard(row: GridSlot) -> impl IntoView {
     let garage = format!("/p/{}", row.handle);
-    let mix = format!("paid {} / community {}", row.paid_rp, row.community_rp);
+    let mix = mix_line(row.paid_rp, row.community_rp);
     let last = row
         .last_overtake
         .clone()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "—".into());
     let footer = row.hover_footer.clone();
-    let badge = row.badge.clone();
+    let footer_class = if footer.is_empty() {
+        "hover-footer"
+    } else {
+        "hover-footer has-flag"
+    };
     let cpc = cpc_display(&row);
-    let pace = row.velocity;
-    let vel = pace_pct_display(row.pace_pct);
     let life = lifetime_display(row.lifetime_rank);
     let gap = gap_display(row.gap_to_next);
+    let gap_class = if row.gap_to_next.is_some() {
+        "hover-gap"
+    } else {
+        ""
+    };
     let pos = format!("P{}", row.rank);
     let handle = row.handle.clone();
+    let avatar_handle = row.handle.clone();
     let race_rp = row.race_rp;
     let clicks = row.clicks;
 
     view! {
         <div class="slot-card">
             <div class="hover-identity">
-                <strong>{handle}</strong>
-                {badge.map(|b| {
-                    let class = badge_class(&b);
-                    let label = badge_label(&b);
-                    view! { <span class=class>{label}</span> }
-                })}
+                <LetterAvatar handle=avatar_handle />
+                <strong class="hover-handle">{handle}</strong>
             </div>
             <div class="hover-band">
-                <p class="hover-band-label">"Racing"</p>
-                <div class="hover-stats">
-                    <div class="hover-stat"><b>{pos}</b><span>"position"</span></div>
-                    <div class="hover-stat"><b>{gap}</b><span>"gap"</span></div>
-                    <div class="hover-stat"><b>{pace}</b><span>"pace"</span></div>
-                    <div class="hover-stat"><b>{vel}</b><span>"velocity"</span></div>
-                    <div class="hover-stat"><b>{last}</b><span>"last overtake"</span></div>
+                <p class="hover-band-label">"Racing telemetry"</p>
+                <div class="hover-stats hover-telemetry">
+                    <div class="hover-stat"><b>{pos}</b><span>"Position"</span></div>
+                    <div class="hover-stat">
+                        <b class=gap_class>{gap}</b>
+                        <span>"GAP"</span>
+                    </div>
                 </div>
             </div>
             <div class="hover-band">
-                <p class="hover-band-label">"Board"</p>
-                <div class="hover-stats">
-                    <div class="hover-stat"><b>{race_rp}</b><span>"race RP"</span></div>
-                    <div class="hover-stat"><b>{life}</b><span>"lifetime"</span></div>
-                    <div class="hover-stat"><b>{mix}</b><span>"paid / community"</span></div>
-                    <div class="hover-stat"><b>{clicks}</b><span>"clicks"</span></div>
+                <p class="hover-band-label">"Last overtake"</p>
+                <p class="hover-overtake">{last}</p>
+            </div>
+            <div class="hover-band">
+                <p class="hover-band-label">"Business intelligence"</p>
+                <div class="hover-stats hover-bi">
+                    <div class="hover-stat">
+                        <b class="hover-rp">{race_rp}</b>
+                        <span>"Race RP"</span>
+                    </div>
+                    <div class="hover-stat"><b>{life}</b><span>"Lifetime"</span></div>
+                    <div class="hover-stat"><b>{clicks}</b><span>"Clicks"</span></div>
                     <div class="hover-stat">
                         <b>{cpc}</b>
                         <span>"CPC"</span>
                         <span class="hover-caption">"board clicks, unverified"</span>
                     </div>
                 </div>
+                <p class="hover-mix">{mix}</p>
             </div>
-            <p class="hover-footer">{footer}</p>
+            <p class=footer_class>{footer}</p>
             <a class="btn-garage" href=garage>"Open garage"</a>
         </div>
     }
@@ -825,66 +901,69 @@ fn Rail(
     now_ms: RwSignal<f64>,
 ) -> impl IntoView {
     view! {
-        <div class="rail-block">
-            <h3>"Sprint"</h3>
-            {move || {
-                let now = now_ms.get();
-                match pick_sprint(&windows.get()) {
-                    Some(w) => {
-                        let cd = format_countdown(&w.ends_at, now).unwrap_or_else(|| "—".into());
-                        view! {
-                            <p class="rail-value">{format!("{} · {}", w.name, cd)}</p>
-                        }.into_any()
+        <h2 class="rail-title">"Today's calendar"</h2>
+        <div class="rail-track">
+            <div class="rail-block">
+                <h3>"Sprint"</h3>
+                {move || {
+                    let now = now_ms.get();
+                    match pick_sprint(&windows.get()) {
+                        Some(w) => {
+                            let cd = format_countdown(&w.ends_at, now).unwrap_or_else(|| "—".into());
+                            view! {
+                                <p class="rail-value">{format!("{} · {}", w.name, cd)}</p>
+                            }.into_any()
+                        }
+                        None => view! { <p class="hint">"No sprint clock"</p> }.into_any(),
                     }
-                    None => view! { <p class="hint">"No sprint clock"</p> }.into_any(),
-                }
-            }}
-        </div>
-        <div class="rail-block">
-            <h3>"Grand Tour"</h3>
-            {move || {
-                let now = now_ms.get();
-                match pick_grand_tour(&windows.get()) {
-                    Some(w) => match grand_tour_day(&w.starts_at, &w.ends_at, now) {
-                        Some(day) => view! {
-                            <p class="rail-value">{format!("{} · {}", w.name, day)}</p>
-                        }.into_any(),
-                        None => view! { <p class="hint">"Grand Tour window open"</p> }.into_any(),
-                    },
-                    None => view! { <p class="hint">"No Grand Tour window"</p> }.into_any(),
-                }
-            }}
-        </div>
-        <div class="rail-block">
-            <h3>"Championship"</h3>
-            {move || {
-                if champ_ok.get() {
-                    if let Some(lead) = champ.get().into_iter().next() {
-                        view! {
-                            <p class="rail-value">
-                                {format!("{} leads · {} pts", lead.handle, lead.points)}
-                            </p>
-                        }.into_any()
+                }}
+            </div>
+            <div class="rail-block">
+                <h3>"Grand Tour"</h3>
+                {move || {
+                    let now = now_ms.get();
+                    match pick_grand_tour(&windows.get()) {
+                        Some(w) => match grand_tour_day(&w.starts_at, &w.ends_at, now) {
+                            Some(day) => view! {
+                                <p class="rail-value">{format!("{} · {}", w.name, day)}</p>
+                            }.into_any(),
+                            None => view! { <p class="hint">"Grand Tour window open"</p> }.into_any(),
+                        },
+                        None => view! { <p class="hint">"No Grand Tour window"</p> }.into_any(),
+                    }
+                }}
+            </div>
+            <div class="rail-block">
+                <h3>"Championship"</h3>
+                {move || {
+                    if champ_ok.get() {
+                        if let Some(lead) = champ.get().into_iter().next() {
+                            view! {
+                                <p class="rail-value">
+                                    {format!("{} leads · {} pts", lead.handle, lead.points)}
+                                </p>
+                            }.into_any()
+                        } else {
+                            view! { <p class="hint">"Championship points pending"</p> }.into_any()
+                        }
                     } else {
                         view! { <p class="hint">"Championship points pending"</p> }.into_any()
                     }
-                } else {
-                    view! { <p class="hint">"Championship points pending"</p> }.into_any()
-                }
-            }}
-        </div>
-        <div class="rail-block">
-            <h3>"Card"</h3>
-            {move || match card_name.get() {
-                Some(name) => view! { <p class="rail-value">{name}</p> }.into_any(),
-                None => view! { <p class="hint">"No operator card"</p> }.into_any(),
-            }}
-        </div>
-        <Show when=move || featured.get().is_some()>
-            <div class="rail-block">
-                <h3>"Featured"</h3>
-                <p class="featured-chip">{move || featured.get().unwrap_or_default()}</p>
+                }}
             </div>
-        </Show>
+            <div class="rail-block">
+                <h3>"Card"</h3>
+                {move || match card_name.get() {
+                    Some(name) => view! { <p class="rail-value">{name}</p> }.into_any(),
+                    None => view! { <p class="hint">"No operator card"</p> }.into_any(),
+                }}
+            </div>
+            <Show when=move || featured.get().is_some()>
+                <div class="rail-block">
+                    <h3>"Featured"</h3>
+                    <p class="featured-chip">{move || featured.get().unwrap_or_default()}</p>
+                </div>
+            </Show>
+        </div>
     }
 }
