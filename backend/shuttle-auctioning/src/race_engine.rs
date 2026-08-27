@@ -15,6 +15,8 @@ pub struct AllocationSample {
     pub project_handle: String,
     pub amount: i64,
     pub created_at: DateTime<Utc>,
+    /// paid | free_weekly | bonus | event_multiplier
+    pub source: String,
 }
 
 /// Previous snapshot slot used to detect overtakes / lead changes.
@@ -68,6 +70,21 @@ pub struct GridSlot {
     pub pace_pct: Option<i64>,
     /// Lifetime board rank, if known. Differs from `rank` ⇒ "not overall".
     pub lifetime_rank: Option<i32>,
+    /// RP allocated in the last 900s (inside the race window).
+    pub burst_rp: i64,
+    /// Consecutive velocity windows at or above median velocity (0..=2).
+    pub sustain_windows: i32,
+    /// Sum of allocations with source == "paid".
+    pub paid_rp: i64,
+    /// race_rp - paid_rp (community / promo fuel).
+    pub community_rp: i64,
+    /// Exactly one of HOT|REIGN|DARK_HORSE|PHOTO|COOLING, else None.
+    pub badge: Option<String>,
+    /// Handle this slot most recently passed, if an overtake fired.
+    pub last_overtake: Option<String>,
+    /// Board clicks; 0 until a click table exists.
+    pub clicks: i64,
+    pub hover_footer: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,9 +158,12 @@ pub fn compute_grid(
     let mut last_at: HashMap<&str, DateTime<Utc>> = HashMap::new();
     let mut velocity: HashMap<&str, i64> = HashMap::new();
     let mut prev_velocity: HashMap<&str, i64> = HashMap::new();
+    let mut burst: HashMap<&str, i64> = HashMap::new();
+    let mut paid: HashMap<&str, i64> = HashMap::new();
 
     let vel_start = cfg.now - chrono::Duration::seconds(cfg.velocity_secs);
     let prev_vel_start = vel_start - chrono::Duration::seconds(cfg.velocity_secs);
+    let burst_start = cfg.now - chrono::Duration::seconds(900);
 
     for a in allocations {
         if a.created_at < cfg.window_start || a.created_at > cfg.window_end {
@@ -152,19 +172,26 @@ pub fn compute_grid(
         if a.amount <= 0 {
             continue;
         }
-        *totals.entry(a.project_handle.as_str()).or_insert(0) += a.amount;
+        let handle = a.project_handle.as_str();
+        *totals.entry(handle).or_insert(0) += a.amount;
         last_at
-            .entry(a.project_handle.as_str())
+            .entry(handle)
             .and_modify(|t| {
                 if a.created_at > *t {
                     *t = a.created_at;
                 }
             })
             .or_insert(a.created_at);
+        if a.source == "paid" {
+            *paid.entry(handle).or_insert(0) += a.amount;
+        }
+        if a.created_at >= burst_start && a.created_at <= cfg.now {
+            *burst.entry(handle).or_insert(0) += a.amount;
+        }
         if a.created_at >= vel_start && a.created_at <= cfg.now {
-            *velocity.entry(a.project_handle.as_str()).or_insert(0) += a.amount;
+            *velocity.entry(handle).or_insert(0) += a.amount;
         } else if a.created_at >= prev_vel_start && a.created_at < vel_start {
-            *prev_velocity.entry(a.project_handle.as_str()).or_insert(0) += a.amount;
+            *prev_velocity.entry(handle).or_insert(0) += a.amount;
         }
     }
 
@@ -179,6 +206,32 @@ pub fn compute_grid(
         })
     });
 
+    // P1 paid floor: a zero-paid leader yields to the best-ranked paid slot.
+    if let Some(leader) = handles.first().copied() {
+        if paid.get(leader).copied().unwrap_or(0) == 0 {
+            if let Some(idx) = handles
+                .iter()
+                .position(|h| paid.get(h).copied().unwrap_or(0) > 0)
+            {
+                handles.swap(0, idx);
+            }
+        }
+    }
+
+    let mut vel_values: Vec<i64> = handles
+        .iter()
+        .map(|h| velocity.get(h).copied().unwrap_or(0))
+        .collect();
+    vel_values.sort_unstable();
+    let median_vel = if vel_values.is_empty() {
+        0
+    } else if vel_values.len() % 2 == 1 {
+        vel_values[vel_values.len() / 2]
+    } else {
+        let mid = vel_values.len() / 2;
+        (vel_values[mid - 1] + vel_values[mid]) / 2
+    };
+
     let leader_rp = handles
         .first()
         .and_then(|h| totals.get(h).copied())
@@ -190,6 +243,8 @@ pub fn compute_grid(
         let vel = velocity.get(handle).copied().unwrap_or(0);
         let pvel = prev_velocity.get(handle).copied().unwrap_or(0);
         let next_rp = handles.get(i + 1).and_then(|n| totals.get(n).copied());
+        let paid_rp = paid.get(handle).copied().unwrap_or(0);
+        let sustain_windows = i32::from(vel >= median_vel) + i32::from(pvel >= median_vel);
         grid.push(GridSlot {
             handle: (*handle).to_string(),
             rank: (i as i32) + 1,
@@ -200,6 +255,14 @@ pub fn compute_grid(
             gap_to_next: next_rp.map(|n| race_rp - n),
             pace_pct: pace_pct_change(vel, pvel),
             lifetime_rank: None,
+            burst_rp: burst.get(handle).copied().unwrap_or(0),
+            sustain_windows,
+            paid_rp,
+            community_rp: race_rp - paid_rp,
+            badge: None,
+            last_overtake: None,
+            clicks: 0,
+            hover_footer: String::new(),
         });
     }
 
@@ -311,6 +374,95 @@ pub fn compute_grid(
                 });
             }
         }
+    }
+
+    let n = grid.len();
+    let max_vel = grid.iter().map(|s| s.velocity).max().unwrap_or(0);
+    let max_vel_count = grid.iter().filter(|s| s.velocity == max_vel).count();
+    let mut vels_desc: Vec<i64> = grid.iter().map(|s| s.velocity).collect();
+    vels_desc.sort_unstable_by(|a, b| b.cmp(a));
+    let hot_threshold = if n >= 10 {
+        Some(vels_desc[n / 10 - 1])
+    } else {
+        None
+    };
+
+    let mut last_pass: HashMap<String, String> = HashMap::new();
+    for ev in &events {
+        if ev.kind == RaceEventKind::Overtake {
+            if let Some(other) = &ev.other_handle {
+                last_pass.insert(ev.project_handle.clone(), other.clone());
+            }
+        }
+    }
+
+    for slot in &mut grid {
+        slot.last_overtake = last_pass.get(&slot.handle).cloned();
+
+        let climbed = prev_by
+            .get(slot.handle.as_str())
+            .map(|p| p.rank - slot.rank)
+            .unwrap_or(0);
+        let photo = slot
+            .gap_to_next
+            .map(|g| g <= cfg.photo_finish_gap)
+            .unwrap_or(false);
+        let hot = if n >= 10 {
+            slot.velocity > 0 && hot_threshold.map(|t| slot.velocity >= t).unwrap_or(false)
+        } else {
+            slot.velocity > 0 && slot.velocity == max_vel && max_vel_count == 1
+        };
+        let reign = slot.rank == 1
+            && prev_by
+                .get(slot.handle.as_str())
+                .map(|p| p.rank == 1)
+                .unwrap_or(false);
+        let cooling = matches!(slot.pace_pct, Some(x) if x < 0) && slot.momentum < 0;
+
+        slot.badge = if photo {
+            Some("PHOTO".into())
+        } else if climbed >= cfg.dark_horse_min_climb {
+            Some("DARK_HORSE".into())
+        } else if hot {
+            Some("HOT".into())
+        } else if reign {
+            Some("REIGN".into())
+        } else if cooling {
+            Some("COOLING".into())
+        } else {
+            None
+        };
+
+        let took = events.iter().any(|e| {
+            e.project_handle == slot.handle
+                && (e.kind == RaceEventKind::Overtake || e.kind == RaceEventKind::LeadChange)
+                && e.to_rank == Some(slot.rank)
+        });
+        slot.hover_footer = if took && slot.burst_rp > 0 {
+            format!("Took P{} after {} burst.", slot.rank, slot.burst_rp)
+        } else if slot.rank == 1 {
+            format!("Held P1. Gap {}.", slot.gap_to_next.unwrap_or(0))
+        } else if climbed >= cfg.dark_horse_min_climb {
+            format!("Dark horse: +{} in window on {}.", climbed, slot.race_rp)
+        } else if slot.community_rp > slot.paid_rp && slot.gap_to_next.is_some() {
+            format!(
+                "Community RP kept the gap at {}.",
+                slot.gap_to_next.unwrap()
+            )
+        } else if photo {
+            format!(
+                "Photo finish: {} RP from P{}.",
+                slot.gap_to_next.unwrap_or(0),
+                slot.rank + 1
+            )
+        } else if cooling {
+            format!(
+                "Cooling: pace down {}% over window.",
+                slot.pace_pct.unwrap_or(0).abs()
+            )
+        } else {
+            format!("{} P{} · {} race RP", slot.handle, slot.rank, slot.race_rp)
+        };
     }
 
     (grid, events)
@@ -451,10 +603,10 @@ async fn load_allocations(
     window_start: DateTime<Utc>,
     window_end: DateTime<Utc>,
 ) -> Result<Vec<AllocationSample>, sqlx::Error> {
-    let rows: Vec<(String, i64, DateTime<Utc>)> = if let Some(tag) = tag {
+    let rows: Vec<(String, i64, DateTime<Utc>, String)> = if let Some(tag) = tag {
         sqlx::query_as(
             r#"
-            SELECT a.project_handle, a.amount, a.created_at
+            SELECT a.project_handle, a.amount, a.created_at, a.source
             FROM project_allocations a
             JOIN projects p ON p.handle = a.project_handle
             WHERE a.created_at >= $1 AND a.created_at <= $2
@@ -469,7 +621,7 @@ async fn load_allocations(
     } else {
         sqlx::query_as(
             r#"
-            SELECT project_handle, amount, created_at
+            SELECT project_handle, amount, created_at, source
             FROM project_allocations
             WHERE created_at >= $1 AND created_at <= $2
             "#,
@@ -481,10 +633,11 @@ async fn load_allocations(
     };
     Ok(rows
         .into_iter()
-        .map(|(project_handle, amount, created_at)| AllocationSample {
+        .map(|(project_handle, amount, created_at, source)| AllocationSample {
             project_handle,
             amount,
             created_at,
+            source,
         })
         .collect())
 }
@@ -674,10 +827,15 @@ mod tests {
     }
 
     fn alloc(handle: &str, amount: i64, min: i64) -> AllocationSample {
+        alloc_src(handle, amount, min, "paid")
+    }
+
+    fn alloc_src(handle: &str, amount: i64, min: i64, source: &str) -> AllocationSample {
         AllocationSample {
             project_handle: handle.into(),
             amount,
             created_at: ts(min),
+            source: source.into(),
         }
     }
 
@@ -844,6 +1002,14 @@ mod tests {
             gap_to_next: None,
             pace_pct: Some(400),
             lifetime_rank: None,
+            burst_rp: 0,
+            sustain_windows: 0,
+            paid_rp: 0,
+            community_rp: 0,
+            badge: None,
+            last_overtake: None,
+            clicks: 0,
+            hover_footer: String::new(),
         }];
         let life = vec![GridSlot {
             handle: "hermes".into(),
@@ -855,6 +1021,14 @@ mod tests {
             gap_to_next: None,
             pace_pct: None,
             lifetime_rank: None,
+            burst_rp: 0,
+            sustain_windows: 0,
+            paid_rp: 0,
+            community_rp: 0,
+            badge: None,
+            last_overtake: None,
+            clicks: 0,
+            hover_footer: String::new(),
         }, GridSlot {
             handle: "openclaw".into(),
             rank: 4,
@@ -865,8 +1039,65 @@ mod tests {
             gap_to_next: None,
             pace_pct: None,
             lifetime_rank: None,
+            burst_rp: 0,
+            sustain_windows: 0,
+            paid_rp: 0,
+            community_rp: 0,
+            badge: None,
+            last_overtake: None,
+            clicks: 0,
+            hover_footer: String::new(),
         }];
         attach_lifetime_ranks(&mut window, &life);
         assert_eq!(window[0].lifetime_rank, Some(4));
+    }
+
+    #[test]
+    fn p1_paid_floor_swaps_community_leader() {
+        let allocs = vec![
+            alloc_src("crowd", 100, 10, "bonus"),
+            alloc_src("sponsor", 10, 20, "paid"),
+        ];
+        let (grid, _) = compute_grid(&allocs, &[], &cfg());
+        assert_eq!(grid[0].handle, "sponsor");
+        assert_eq!(grid[0].rank, 1);
+        assert_eq!(grid[0].paid_rp, 10);
+        assert_eq!(grid[1].handle, "crowd");
+        assert_eq!(grid[1].rank, 2);
+        assert_eq!(grid[1].paid_rp, 0);
+        assert_eq!(grid[1].community_rp, 100);
+        assert_eq!(grid[0].gap_to_leader, 0);
+        assert_eq!(grid[1].gap_to_leader, grid[0].race_rp - grid[1].race_rp);
+        assert_eq!(grid[0].gap_to_next, Some(grid[0].race_rp - grid[1].race_rp));
+    }
+
+    #[test]
+    fn burst_counts_only_last_fifteen_minutes() {
+        // now = ts(60). burst window = last 900s = ts(45)..=ts(60).
+        let allocs = vec![
+            alloc("alpha", 40, 10), // 50 min ago — race RP, not burst
+            alloc("alpha", 9, 50),  // 10 min ago — burst
+            alloc("alpha", 3, 44),  // 16 min ago — just outside burst
+        ];
+        let (grid, _) = compute_grid(&allocs, &[], &cfg());
+        assert_eq!(grid[0].race_rp, 52);
+        assert_eq!(grid[0].burst_rp, 9);
+    }
+
+    #[test]
+    fn badge_photo_when_gap_at_or_under_five() {
+        let allocs = vec![alloc("alpha", 100, 10), alloc("beta", 97, 12)];
+        let (grid, _) = compute_grid(&allocs, &[], &cfg());
+        assert_eq!(grid[0].gap_to_next, Some(3));
+        assert_eq!(grid[0].badge.as_deref(), Some("PHOTO"));
+    }
+
+    #[test]
+    fn hover_footer_held_p1_for_lone_leader() {
+        let allocs = vec![alloc("alpha", 1, 1)];
+        let (grid, _) = compute_grid(&allocs, &[], &cfg());
+        assert_eq!(grid.len(), 1);
+        assert_eq!(grid[0].rank, 1);
+        assert_eq!(grid[0].hover_footer, "Held P1. Gap 0.");
     }
 }
