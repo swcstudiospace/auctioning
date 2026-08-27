@@ -1,0 +1,148 @@
+.pageHead {
+  padding: 3.5rem 0 1.35rem;
+}
+
+.pageHead h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(2rem, 4vw, 3.25rem);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin: 0;
+  padding: 0 0 4.5rem;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1.25rem 1.2rem 1.15rem;
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.18s ease-out;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--emerald);
+  outline-offset: 3px;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.35rem;
+}
+
+.mark {
+  display: inline-grid;
+  place-items: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  background: var(--emerald);
+  color: var(--bg);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.markPink {
+  background: var(--pink);
+  color: var(--ink);
+}
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--emerald);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--emerald);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--emerald) 45%, transparent);
+  animation: live 1.7s ease-out infinite;
+}
+
+.card h2 {
+  margin: 0 0 1.6rem;
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.rp {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: auto 0 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rp strong {
+  color: var(--ink);
+  font-size: 1.55rem;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.rp span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.bar {
+  height: 3px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  background: var(--emerald);
+}
+
+@keyframes live {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--emerald) 50%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0.5rem color-mix(in srgb, var(--emerald) 0%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot,
+  .card {
+    animation: none;
+    transition: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
