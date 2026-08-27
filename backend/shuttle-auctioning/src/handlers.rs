@@ -729,7 +729,25 @@ async fn featured_race_from_windows(
         let events = race_engine::events_for_window(db, window.id, 100)
             .await
             .map_err(AppError::from)?;
-        signals.push(featured_signals_for(window, &grid, &events, now));
+        let unique_count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(DISTINCT supporter_wallet)::bigint
+            FROM project_allocations
+            WHERE created_at >= $1 AND created_at <= $2 AND source = 'paid'
+            "#,
+        )
+        .bind(window.starts_at)
+        .bind(window.ends_at.min(now))
+        .fetch_one(db)
+        .await
+        .map_err(AppError::from)?;
+        signals.push(featured_signals_for(
+            window,
+            &grid,
+            &events,
+            now,
+            unique_payers_signal(unique_count),
+        ));
     }
     Ok(featured::pick_featured(&signals))
 }
@@ -739,6 +757,7 @@ fn featured_signals_for(
     grid: &[race_engine::GridSlot],
     events: &[race_engine::RaceEventRow],
     now: chrono::DateTime<chrono::Utc>,
+    unique_payers: i64,
 ) -> featured::FeaturedSignals {
     let overtake_count = events
         .iter()
@@ -756,7 +775,7 @@ fn featured_signals_for(
         window_name: window.name.clone(),
         overtake_density: (overtake_count.saturating_mul(20)).clamp(0, 100),
         photo_finish_pressure: photo_finish_pressure(grid, has_photo),
-        unique_payers: 0,
+        unique_payers,
         mix: mix_score(grid),
         time_remaining: time_remaining_score(window, now),
         freshness: if has_dark_horse { 100 } else { 0 },
@@ -764,6 +783,10 @@ fn featured_signals_for(
         overtakes_in_window: overtake_count,
         p1_p3_cover_rp: p1_p3_cover_rp(grid),
     }
+}
+
+fn unique_payers_signal(count: i64) -> i64 {
+    (count.saturating_mul(10)).clamp(0, 100)
 }
 
 fn photo_finish_pressure(grid: &[race_engine::GridSlot], has_photo: bool) -> i64 {
@@ -947,5 +970,13 @@ mod featured_signal_tests {
             now + Duration::minutes(10),
         );
         assert_eq!(time_remaining_score(&w, now), 60);
+    }
+
+    #[test]
+    fn unique_payers_signal_maps_count() {
+        assert_eq!(unique_payers_signal(0), 0);
+        assert_eq!(unique_payers_signal(3), 30);
+        assert_eq!(unique_payers_signal(10), 100);
+        assert_eq!(unique_payers_signal(99), 100);
     }
 }
