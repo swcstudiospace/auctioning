@@ -362,7 +362,6 @@ pub fn how_they_did_it(input: &NarrativeInput) -> String {
     s
 }
 
-
 pub fn render_channel(channel: NarrativeChannel, input: &NarrativeInput, why: &[String]) -> String {
     let clock = ts(input);
     let headline = subject_line(input);
@@ -574,6 +573,9 @@ mod tests {
             window_name: Some("Grand Tour 2026-08-24".into()),
             lifetime_rank: Some(4),
             pace_pct: Some(400),
+            burst_rp: None,
+            paid_rp: None,
+            community_rp: None,
         }
     }
 
@@ -690,6 +692,9 @@ mod tests {
             window_name: None,
             lifetime_rank: None,
             pace_pct: None,
+            burst_rp: None,
+            paid_rp: None,
+            community_rp: None,
         };
         let why = why_clauses(&input);
         assert!(why.is_empty(), "no facts → no invented why: {why:?}");
@@ -719,6 +724,9 @@ mod tests {
             window_name: Some("Sprint".into()),
             lifetime_rank: None,
             pace_pct: None,
+            burst_rp: None,
+            paid_rp: None,
+            community_rp: None,
         };
         let bundle = generate_narrative(&pf, None, at());
         let x = &bundle.posts[0].body;
@@ -745,6 +753,9 @@ mod tests {
             window_name: None,
             lifetime_rank: None,
             pace_pct: None,
+            burst_rp: None,
+            paid_rp: None,
+            community_rp: None,
         };
         let why = why_clauses(&lc);
         assert!(why.iter().any(|c| c.contains("unseated")));
@@ -768,6 +779,9 @@ mod tests {
             window_name: None,
             lifetime_rank: None,
             pace_pct: None,
+            burst_rp: None,
+            paid_rp: None,
+            community_rp: None,
         };
         let bundle = generate_narrative(&start, None, at());
         assert!(bundle.posts.iter().all(|p| !p.body.is_empty()));
@@ -786,12 +800,22 @@ mod tests {
             summary: Some("s".into()),
             is_narrative_worthy: true,
             created_at: at(),
-            payload: serde_json::json!({"from_rank": 4, "to_rank": 2, "rp_delta": 9}),
+            payload: serde_json::json!({
+                "from_rank": 4,
+                "to_rank": 2,
+                "rp_delta": 9,
+                "burst_rp": 15,
+                "paid_rp": 8,
+                "community_rp": 7
+            }),
         };
         let input = NarrativeInput::from_row(&row, None).unwrap();
         assert_eq!(input.from_rank, Some(4));
         assert_eq!(input.to_rank, Some(2));
         assert_eq!(input.rp_delta, Some(9));
+        assert_eq!(input.burst_rp, Some(15));
+        assert_eq!(input.paid_rp, Some(8));
+        assert_eq!(input.community_rp, Some(7));
         let bad = RaceEventRow {
             event_type: "not-a-kind".into(),
             ..row
@@ -809,5 +833,50 @@ mod tests {
         );
         assert_eq!(NarrativeChannel::Newsletter.as_str(), "newsletter");
         assert_eq!(NarrativeChannel::Timeline.as_str(), "timeline");
+    }
+
+    #[test]
+    fn how_they_did_it_lead_change_cites_ledger_fields() {
+        let input = NarrativeInput {
+            event_id: "evt-htdi".into(),
+            occurred_at: at(),
+            kind: RaceEventKind::LeadChange,
+            project_handle: "beta".into(),
+            other_handle: Some("alpha".into()),
+            title: String::new(),
+            summary: String::new(),
+            from_rank: Some(2),
+            to_rank: Some(1),
+            rp_delta: Some(12),
+            window_slug: Some("grand-tour-2026-08-24".into()),
+            window_name: Some("Grand Tour 2026-08-24".into()),
+            lifetime_rank: None,
+            pace_pct: None,
+            burst_rp: Some(40),
+            paid_rp: Some(30),
+            community_rp: Some(10),
+        };
+        let recap = how_they_did_it(&input);
+        assert!(recap.contains("beta"), "handle: {recap}");
+        assert!(recap.contains("P1"), "rank: {recap}");
+        assert!(recap.contains("40 RP burst"), "burst: {recap}");
+        assert!(recap.contains("paid 30 / community 10"), "mix: {recap}");
+        assert!(recap.contains("Grand Tour 2026-08-24"), "window: {recap}");
+        assert!(!recap.to_lowercase().contains("launch"));
+        assert!(!recap.to_lowercase().contains("funding"));
+
+        let x = &generate_narrative(&input, None, at()).posts[0].body;
+        assert!(x.contains(&recap), "lead-change X missing recap: {x}");
+        assert!(x.contains("took the lead from"));
+
+        let no_burst = NarrativeInput {
+            burst_rp: None,
+            ..input.clone()
+        };
+        let recap2 = how_they_did_it(&no_burst);
+        assert!(!recap2.contains("burst"), "missing burst must omit the word: {recap2}");
+        assert!(recap2.contains("12 RP"), "falls back to rp_delta: {recap2}");
+        assert!(!recap2.to_lowercase().contains("launch"));
+        assert!(!recap2.to_lowercase().contains("funding"));
     }
 }

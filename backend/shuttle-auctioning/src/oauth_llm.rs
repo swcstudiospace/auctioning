@@ -474,6 +474,9 @@ mod tests {
             window_name: None,
             lifetime_rank: None,
             pace_pct: None,
+            burst_rp: None,
+            paid_rp: None,
+            community_rp: None,
         }
     }
 
