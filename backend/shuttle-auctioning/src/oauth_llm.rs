@@ -472,6 +472,8 @@ mod tests {
             rp_delta: Some(12),
             window_slug: None,
             window_name: None,
+            lifetime_rank: None,
+            pace_pct: None,
         }
     }
 

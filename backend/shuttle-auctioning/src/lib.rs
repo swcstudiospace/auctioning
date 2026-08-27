@@ -13,6 +13,7 @@
 pub mod catalog;
 pub mod config;
 mod error;
+pub mod events;
 mod handlers;
 pub mod ledger;
 pub mod narrative;
@@ -184,6 +185,8 @@ async fn main(
             post(publish::mark_published_handler),
         )
         .route("/v1/narrative/queue", get(publish::queue_handler))
+        .route("/v1/events/active", get(handlers::events_active))
+        .route("/v1/events/afterburner", post(handlers::open_afterburner))
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);

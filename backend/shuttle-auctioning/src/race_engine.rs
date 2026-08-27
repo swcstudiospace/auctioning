@@ -64,6 +64,10 @@ pub struct GridSlot {
     pub momentum: i64,
     pub gap_to_leader: i64,
     pub gap_to_next: Option<i64>,
+    /// Percent pace vs the previous equal velocity window. None if prior was 0.
+    pub pace_pct: Option<i64>,
+    /// Lifetime board rank, if known. Differs from `rank` ⇒ "not overall".
+    pub lifetime_rank: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,6 +198,8 @@ pub fn compute_grid(
             momentum: vel - pvel,
             gap_to_leader: leader_rp - race_rp,
             gap_to_next: next_rp.map(|n| race_rp - n),
+            pace_pct: pace_pct_change(vel, pvel),
+            lifetime_rank: None,
         });
     }
 
@@ -310,6 +316,48 @@ pub fn compute_grid(
     (grid, events)
 }
 
+/// Percent change in pace. Never invents a percentage from a zero prior window.
+pub fn pace_pct_change(current: i64, previous: i64) -> Option<i64> {
+    if previous <= 0 {
+        None
+    } else {
+        Some(((current - previous) * 100) / previous)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrendContrast {
+    pub window_rank: i32,
+    pub lifetime_rank: Option<i32>,
+    pub pace_pct: Option<i64>,
+    pub not_overall: bool,
+}
+
+pub fn trend_contrast(
+    window_rank: i32,
+    lifetime_rank: Option<i32>,
+    velocity: i64,
+    prev_velocity: i64,
+) -> TrendContrast {
+    TrendContrast {
+        window_rank,
+        lifetime_rank,
+        pace_pct: pace_pct_change(velocity, prev_velocity),
+        not_overall: lifetime_rank.map(|l| l != window_rank).unwrap_or(false),
+    }
+}
+
+pub fn attach_lifetime_ranks(window_grid: &mut [GridSlot], lifetime: &[GridSlot]) {
+    use std::collections::HashMap;
+    let map: HashMap<&str, i32> = lifetime
+        .iter()
+        .map(|s| (s.handle.as_str(), s.rank))
+        .collect();
+    for slot in window_grid {
+        slot.lifetime_rank = map.get(slot.handle.as_str()).copied();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Persistence (optional — GET endpoints can compute without writing)
 // ---------------------------------------------------------------------------
@@ -340,21 +388,21 @@ pub struct RaceEventRow {
     pub payload: serde_json::Value,
 }
 
-/// Ensure a live weekly Grand Prix exists so the grid is never empty-state.
+/// Ensure a live weekly Grand Tour exists so the grid is never empty-state.
 pub async fn ensure_default_window(db: &PgPool) -> Result<RaceWindowRow, sqlx::Error> {
     let week_start = crate::ledger::current_week_start();
     let week_end = crate::ledger::next_week_start(Utc::now());
-    let slug = format!("weekly-gp-{}", week_start.format("%Y-%m-%d"));
+    let slug = format!("grand-tour-{}", week_start.format("%Y-%m-%d"));
 
     sqlx::query(
         r#"
         INSERT INTO race_windows (slug, name, race_type, status, starts_at, ends_at, rules)
-        VALUES ($1, $2, 'GRAND_PRIX', 'live', $3, $4, '{"photo_finish_gap":5,"velocity_secs":3600}'::jsonb)
+        VALUES ($1, $2, 'GRAND_TOUR', 'live', $3, $4, '{"photo_finish_gap":5,"velocity_secs":3600}'::jsonb)
         ON CONFLICT (slug) DO NOTHING
         "#,
     )
     .bind(&slug)
-    .bind(format!("Weekly Grand Prix {}", week_start.format("%Y-%m-%d")))
+    .bind(format!("Grand Tour {}", week_start.format("%Y-%m-%d")))
     .bind(week_start)
     .bind(week_end)
     .execute(db)
@@ -494,7 +542,10 @@ pub async fn grid_for_window(
     let cfg = config_from_window(window, now);
     let allocs = load_allocations(db, window.tag.as_deref(), cfg.window_start, now).await?;
     let prev = load_previous_snapshot(db, window.id).await?;
-    Ok(compute_grid(&allocs, &prev, &cfg))
+    let (mut grid, events) = compute_grid(&allocs, &prev, &cfg);
+    let lifetime = lifetime_grid(db).await?;
+    attach_lifetime_ranks(&mut grid, &lifetime);
+    Ok((grid, events))
 }
 
 /// Lifetime board treated as an open-ended race (velocity still last hour).
@@ -760,5 +811,62 @@ mod tests {
             Some(RaceEventKind::LeadChange)
         );
         assert_eq!(RaceEventKind::parse("nope"), None);
+    }
+
+    #[test]
+    fn pace_pct_400_from_10_to_50() {
+        assert_eq!(pace_pct_change(50, 10), Some(400));
+        assert_eq!(pace_pct_change(10, 10), Some(0));
+        assert_eq!(pace_pct_change(5, 10), Some(-50));
+        assert_eq!(pace_pct_change(100, 0), None);
+    }
+
+    #[test]
+    fn overtake_in_window_is_not_overall_when_lifetime_differs() {
+        let t = trend_contrast(1, Some(4), 50, 10);
+        assert!(t.not_overall);
+        assert_eq!(t.pace_pct, Some(400));
+        assert_eq!(t.window_rank, 1);
+        assert_eq!(t.lifetime_rank, Some(4));
+        let same = trend_contrast(1, Some(1), 50, 10);
+        assert!(!same.not_overall);
+    }
+
+    #[test]
+    fn attach_lifetime_ranks_fills_slots() {
+        let mut window = vec![GridSlot {
+            handle: "openclaw".into(),
+            rank: 1,
+            race_rp: 50,
+            velocity: 50,
+            momentum: 40,
+            gap_to_leader: 0,
+            gap_to_next: None,
+            pace_pct: Some(400),
+            lifetime_rank: None,
+        }];
+        let life = vec![GridSlot {
+            handle: "hermes".into(),
+            rank: 1,
+            race_rp: 900,
+            velocity: 0,
+            momentum: 0,
+            gap_to_leader: 0,
+            gap_to_next: None,
+            pace_pct: None,
+            lifetime_rank: None,
+        }, GridSlot {
+            handle: "openclaw".into(),
+            rank: 4,
+            race_rp: 100,
+            velocity: 0,
+            momentum: 0,
+            gap_to_leader: 0,
+            gap_to_next: None,
+            pace_pct: None,
+            lifetime_rank: None,
+        }];
+        attach_lifetime_ranks(&mut window, &life);
+        assert_eq!(window[0].lifetime_rank, Some(4));
     }
 }

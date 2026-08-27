@@ -238,9 +238,9 @@ pub async fn whop_webhook(
 
     match (&paid.wallet, ev.r#type.as_str()) {
         (Some(wallet), t) if t.contains("payment") || t.contains("membership") => {
-            // Private-side entry for a fiat purchase. The matching public
-            // receipt appears when the payer's wallet signs log_paid_rp.
-            ledger::credit_paid(
+            // Private-side entry for a fiat purchase. Matching public receipt
+            // is log_paid_rp (paid dollars only — Afterburner pace stays off-chain).
+            crate::events::credit_paid_with_card(
                 &state.db,
                 wallet,
                 rp_from_cents(paid.amount_cents.unwrap_or(0)),
@@ -260,8 +260,8 @@ pub async fn whop_webhook(
 }
 
 fn rp_from_cents(cents: i64) -> i64 {
-    // Pricing v1: 100c (= $1) buys 1_000 RP. Configurable later via app settings.
-    cents.saturating_mul(10)
+    // Advertised 1:1 — $1 (100 cents) buys 1 paid RP. Afterburner adds pace lots.
+    cents / 100
 }
 
 /// Server-side membership verification against Whop's REST API.
@@ -634,4 +634,36 @@ pub async fn race_window_tape(
         .await
         .map_err(AppError::from)?;
     Ok(Json(json!({ "window": window.slug, "posts": posts })))
+}
+
+pub async fn events_active(
+    State(state): State<crate::AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let card = crate::events::active_card(&state.db, chrono::Utc::now())
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(json!({
+        "active": card,
+        "note": "Paid RP stays $1=1. Active card adds event_multiplier pace only."
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct OpenAfterburnerRequest {
+    /// Hours Afterburner stays live. Default 48.
+    #[serde(default)]
+    pub hours: Option<i64>,
+}
+
+pub async fn open_afterburner(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Json(req): Json<OpenAfterburnerRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    check_ingest(&state, &headers)?;
+    let hours = req.hours.unwrap_or(48).clamp(1, 168);
+    let card = crate::events::open_afterburner(&state.db, chrono::Duration::hours(hours))
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(json!({ "opened": card })))
 }

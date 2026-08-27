@@ -84,6 +84,8 @@ pub struct NarrativeInput {
     pub rp_delta: Option<i64>,
     pub window_slug: Option<String>,
     pub window_name: Option<String>,
+    pub lifetime_rank: Option<i32>,
+    pub pace_pct: Option<i64>,
 }
 
 impl NarrativeInput {
@@ -111,6 +113,8 @@ impl NarrativeInput {
             rp_delta: ev.rp_delta,
             window_slug: window.map(|w| w.slug.clone()),
             window_name: window.map(|w| w.name.clone()),
+            lifetime_rank: None,
+            pace_pct: None,
         }
     }
 
@@ -141,6 +145,8 @@ impl NarrativeInput {
             rp_delta,
             window_slug: window.map(|w| w.slug.clone()),
             window_name: window.map(|w| w.name.clone()),
+            lifetime_rank: row.payload.get("lifetime_rank").and_then(|v| v.as_i64()).map(|n| n as i32),
+            pace_pct: row.payload.get("pace_pct").and_then(|v| v.as_i64()),
         })
     }
 }
@@ -235,6 +241,18 @@ pub fn why_clauses(input: &NarrativeInput) -> Vec<String> {
     } else if let Some(slug) = input.window_slug.as_deref() {
         if !slug.is_empty() {
             why.push(format!("in {slug}"));
+        }
+    }
+    if let Some(pct) = input.pace_pct {
+        if pct > 0 {
+            why.push(format!("pace +{pct}% vs prior window"));
+        } else if pct < 0 {
+            why.push(format!("pace {pct}% vs prior window"));
+        }
+    }
+    if let Some(life) = input.lifetime_rank {
+        if input.to_rank.map(|r| r != life).unwrap_or(true) {
+            why.push(format!("not overall (lifetime P{life})"));
         }
     }
     if why.is_empty() && !input.summary.is_empty() {
@@ -499,8 +517,10 @@ mod tests {
             from_rank: Some(3),
             to_rank: Some(1),
             rp_delta: Some(12),
-            window_slug: Some("weekly-gp-2026-08-24".into()),
-            window_name: Some("Weekly Grand Prix 2026-08-24".into()),
+            window_slug: Some("grand-tour-2026-08-24".into()),
+            window_name: Some("Grand Tour 2026-08-24".into()),
+            lifetime_rank: Some(4),
+            pace_pct: Some(400),
         }
     }
 
@@ -547,6 +567,19 @@ mod tests {
             .iter()
             .all(|p| p.source == NarrativeSource::Template));
         assert_bundle_complete(&bundle, &input);
+    }
+
+    #[test]
+    fn windowed_overtake_cites_pace_and_not_overall() {
+        let input = overtake();
+        let why = why_clauses(&input);
+        assert!(why.iter().any(|c| c.contains("pace +400% vs prior window")));
+        assert!(why.iter().any(|c| c.contains("not overall (lifetime P4)")));
+        assert!(why.iter().any(|c| c.contains("Grand Tour")));
+        let x = generate_narrative(&input, None, at()).posts[0].body.clone();
+        assert!(x.contains("400%"));
+        assert!(x.contains("not overall"));
+        assert!(!x.to_lowercase().contains("all-time #1"));
     }
 
     #[test]
@@ -602,6 +635,8 @@ mod tests {
             rp_delta: None,
             window_slug: None,
             window_name: None,
+            lifetime_rank: None,
+            pace_pct: None,
         };
         let why = why_clauses(&input);
         assert!(why.is_empty(), "no facts → no invented why: {why:?}");
@@ -629,6 +664,8 @@ mod tests {
             rp_delta: Some(3),
             window_slug: None,
             window_name: Some("Sprint".into()),
+            lifetime_rank: None,
+            pace_pct: None,
         };
         let bundle = generate_narrative(&pf, None, at());
         let x = &bundle.posts[0].body;
@@ -653,6 +690,8 @@ mod tests {
             rp_delta: None,
             window_slug: None,
             window_name: None,
+            lifetime_rank: None,
+            pace_pct: None,
         };
         let why = why_clauses(&lc);
         assert!(why.iter().any(|c| c.contains("unseated")));
@@ -674,6 +713,8 @@ mod tests {
             rp_delta: None,
             window_slug: Some("gp".into()),
             window_name: None,
+            lifetime_rank: None,
+            pace_pct: None,
         };
         let bundle = generate_narrative(&start, None, at());
         assert!(bundle.posts.iter().all(|p| !p.body.is_empty()));

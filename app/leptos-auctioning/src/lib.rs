@@ -160,6 +160,10 @@ pub struct GridSlot {
     pub momentum: i64,
     pub gap_to_leader: i64,
     pub gap_to_next: Option<i64>,
+    #[serde(default)]
+    pub pace_pct: Option<i64>,
+    #[serde(default)]
+    pub lifetime_rank: Option<i32>,
 }
 
 async fn api_get(path: &str) -> Result<reqwest::Response, String> {
@@ -324,6 +328,7 @@ pub fn App() -> impl IntoView {
                     </Suspense>
                 </section>
 
+                <EventBanner />
                 <LiveGrid />
                 <RaceTape />
                 <ProjectBoard wallet=wallet rp=rp />
@@ -331,6 +336,49 @@ pub fn App() -> impl IntoView {
             </main>
         }
         .into_any(),
+    }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ActiveCard {
+    pub slug: String,
+    pub name: String,
+    pub multiplier_bps: i64,
+}
+
+#[component]
+fn EventBanner() -> impl IntoView {
+    let card = RwSignal::new(None::<ActiveCard>);
+    Effect::new(move |_| {
+        spawn_local(async move {
+            if let Ok(resp) = api_get("/v1/events/active").await {
+                if resp.status().is_success() {
+                    #[derive(Deserialize)]
+                    struct Wrap { active: Option<ActiveCard> }
+                    if let Ok(w) = resp.json::<Wrap>().await {
+                        card.set(w.active);
+                    }
+                }
+            }
+        });
+    });
+    view! {
+        <section class="event-banner">
+            <Show
+                when=move || card.get().is_some()
+                fallback=view! { <p class="hint">"No operator card live — paid RP is 1:1. Grand Tour still runs."</p> }
+            >
+                {move || card.get().map(|c| {
+                    let x = (c.multiplier_bps as f64) / 10000.0;
+                    view! {
+                        <p class="notice">
+                            {format!("{} live · {}x race pace (paid dollars stay 1:1)", c.name, x)}
+                        </p>
+                    }
+                })}
+            </Show>
+        </section>
     }
 }
 
@@ -371,6 +419,8 @@ fn LiveGrid() -> impl IntoView {
                             <th>"Race RP"</th>
                             <th>"Vel"</th>
                             <th>"Mom"</th>
+                            <th>"Pace"</th>
+                            <th>"Lifetime"</th>
                             <th>"Gap"</th>
                         </tr>
                     </thead>
@@ -382,6 +432,8 @@ fn LiveGrid() -> impl IntoView {
                                 <td>{child.race_rp}</td>
                                 <td>{child.velocity}</td>
                                 <td>{child.momentum}</td>
+                                <td>{child.pace_pct.map(|p| format!("{p}%")).unwrap_or_else(|| "—".into())}</td>
+                                <td>{child.lifetime_rank.map(|r| format!("P{r}")).unwrap_or_else(|| "—".into())}</td>
                                 <td>{child.gap_to_leader}</td>
                             </tr>
                         </For>
