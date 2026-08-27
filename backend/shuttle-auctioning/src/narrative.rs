@@ -86,6 +86,9 @@ pub struct NarrativeInput {
     pub window_name: Option<String>,
     pub lifetime_rank: Option<i32>,
     pub pace_pct: Option<i64>,
+    pub burst_rp: Option<i64>,
+    pub paid_rp: Option<i64>,
+    pub community_rp: Option<i64>,
 }
 
 impl NarrativeInput {
@@ -115,6 +118,9 @@ impl NarrativeInput {
             window_name: window.map(|w| w.name.clone()),
             lifetime_rank: None,
             pace_pct: None,
+            burst_rp: None,
+            paid_rp: None,
+            community_rp: None,
         }
     }
 
@@ -147,6 +153,9 @@ impl NarrativeInput {
             window_name: window.map(|w| w.name.clone()),
             lifetime_rank: row.payload.get("lifetime_rank").and_then(|v| v.as_i64()).map(|n| n as i32),
             pace_pct: row.payload.get("pace_pct").and_then(|v| v.as_i64()),
+            burst_rp: row.payload.get("burst_rp").and_then(|v| v.as_i64()),
+            paid_rp: row.payload.get("paid_rp").and_then(|v| v.as_i64()),
+            community_rp: row.payload.get("community_rp").and_then(|v| v.as_i64()),
         })
     }
 }
@@ -320,6 +329,40 @@ fn why_sentence(why: &[String]) -> String {
     }
 }
 
+/// Ledger-backed recap. Cites only present fields; never invents launches or funding.
+pub fn how_they_did_it(input: &NarrativeInput) -> String {
+    let mut s = format!("{} {}", input.project_handle, verb(input.kind));
+    if let Some(rank) = input.to_rank {
+        s.push_str(&format!(" P{rank}"));
+    }
+    if let Some(burst) = input.burst_rp {
+        s.push_str(&format!(" with {burst} RP burst"));
+    } else if let Some(delta) = input.rp_delta {
+        s.push_str(&format!(" with {delta} RP"));
+    }
+    if let Some(other) = input.other_handle.as_deref() {
+        if !other.is_empty() {
+            match input.kind {
+                RaceEventKind::LeadChange => s.push_str(&format!(" after {other}")),
+                RaceEventKind::Overtake => s.push_str(&format!(" past {other}")),
+                _ => s.push_str(&format!(" after {other}")),
+            }
+        }
+    }
+    if input.paid_rp.is_some() || input.community_rp.is_some() {
+        let paid = input.paid_rp.unwrap_or(0);
+        let community = input.community_rp.unwrap_or(0);
+        s.push_str(&format!(" paid {paid} / community {community}"));
+    }
+    if let Some(name) = input.window_name.as_deref() {
+        if !name.is_empty() {
+            s.push_str(&format!(" in {name}"));
+        }
+    }
+    s
+}
+
+
 pub fn render_channel(channel: NarrativeChannel, input: &NarrativeInput, why: &[String]) -> String {
     let clock = ts(input);
     let headline = subject_line(input);
@@ -329,6 +372,16 @@ pub fn render_channel(channel: NarrativeChannel, input: &NarrativeInput, why: &[
     match channel {
         NarrativeChannel::X => {
             let mut body = format!("{clock} 🏁 {headline}.");
+            if matches!(input.kind, RaceEventKind::LeadChange) {
+                let recap = how_they_did_it(input);
+                if !recap.is_empty() {
+                    body.push(' ');
+                    body.push_str(&recap);
+                    if !recap.ends_with('.') {
+                        body.push('.');
+                    }
+                }
+            }
             if !why_s.is_empty() {
                 body.push(' ');
                 body.push_str(&why_s);
