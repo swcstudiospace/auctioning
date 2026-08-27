@@ -67,10 +67,6 @@ const CASES: CaseStudy[] = [
   },
 ];
 
-function formatRp(value: number) {
-  return value.toLocaleString("en-US");
-}
-
 export default function NewsCases() {
   return (
     <section className="news-cases">
@@ -104,7 +100,7 @@ export default function NewsCases() {
             </div>
 
             <p className="news-rp">
-              <span className="news-rp-value">{formatRp(entry.rp)}</span>
+              <span className="news-rp-value">{entry.rp.toLocaleString("en-US")}</span>
               <span className="news-rp-unit">RP</span>
             </p>
 
