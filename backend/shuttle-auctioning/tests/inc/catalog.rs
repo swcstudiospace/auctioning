@@ -246,23 +246,125 @@ pub struct ProjectWithRank {
 }
 
 /// Ranked board: highest total_rp first, ties broken by earliest creation.
+/// Legacy helper used by tests and any caller that still wants a capped slice.
 pub async fn list_projects(db: &PgPool, limit: i64) -> Result<Vec<ProjectWithRank>, sqlx::Error> {
-    sqlx::query_as::<_, ProjectWithRank>(
+    let page = list_projects_page_inner(db, 1, limit.clamp(1, 500), None, None, true).await?;
+    Ok(page.projects)
+}
+
+/// Paginated board with optional tag / free-text filters.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ProjectListPage {
+    pub projects: Vec<ProjectWithRank>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+    pub tags: Vec<String>,
+}
+
+pub async fn list_projects_page(
+    db: &PgPool,
+    page: i64,
+    per_page: i64,
+    tag: Option<&str>,
+    q: Option<&str>,
+) -> Result<ProjectListPage, sqlx::Error> {
+    list_projects_page_inner(db, page, per_page, tag, q, false).await
+}
+
+async fn list_projects_page_inner(
+    db: &PgPool,
+    page: i64,
+    per_page: i64,
+    tag: Option<&str>,
+    q: Option<&str>,
+    allow_large: bool,
+) -> Result<ProjectListPage, sqlx::Error> {
+    let page = page.max(1);
+    let max_per = if allow_large { 500 } else { 50 };
+    let per_page = per_page.clamp(1, max_per);
+    let offset = (page - 1).saturating_mul(per_page);
+
+    let tag_bind: Option<String> = tag
+        .map(|t| clean_tags(&[t.to_string()]))
+        .and_then(|mut v| v.pop());
+    let q_bind: Option<String> = q
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.chars().take(80).collect::<String>());
+
+    let total: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM projects p
+        WHERE ($1::text IS NULL OR $1 = ANY(p.tags))
+          AND (
+            $2::text IS NULL
+            OR position(
+                 lower($2) in lower(
+                   coalesce(p.display_name, '') || ' ' || p.handle || ' '
+                   || coalesce(p.blurb, '') || ' ' || coalesce(p.url, '')
+                 )
+               ) > 0
+          )
+        "#,
+    )
+    .bind(&tag_bind)
+    .bind(&q_bind)
+    .fetch_one(db)
+    .await?;
+
+    let projects = sqlx::query_as::<_, ProjectWithRank>(
         r#"
         SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
                stable_id, url, tags, total_rp, rank
         FROM (
             SELECT p.*,
-                   rank() OVER (ORDER BY p.total_rp DESC, p.created_at ASC) AS rank
+                   row_number() OVER (ORDER BY p.total_rp DESC, p.created_at ASC) AS rank
             FROM projects p
+            WHERE ($1::text IS NULL OR $1 = ANY(p.tags))
+              AND (
+                $2::text IS NULL
+                OR position(
+                     lower($2) in lower(
+                       coalesce(p.display_name, '') || ' ' || p.handle || ' '
+                       || coalesce(p.blurb, '') || ' ' || coalesce(p.url, '')
+                     )
+                   ) > 0
+              )
         ) ranked
         ORDER BY rank, handle
-        LIMIT $1
+        LIMIT $3 OFFSET $4
         "#,
     )
-    .bind(limit.clamp(1, 500))
+    .bind(&tag_bind)
+    .bind(&q_bind)
+    .bind(per_page)
+    .bind(offset)
     .fetch_all(db)
-    .await
+    .await?;
+
+    let tags: Vec<String> = sqlx::query_scalar(
+        r#"
+        SELECT t
+        FROM (
+            SELECT DISTINCT unnest(tags) AS t
+            FROM projects
+        ) s
+        WHERE t IS NOT NULL AND t <> ''
+        ORDER BY t
+        "#,
+    )
+    .fetch_all(db)
+    .await?;
+
+    Ok(ProjectListPage {
+        projects,
+        total,
+        page,
+        per_page,
+        tags,
+    })
 }
 
 pub async fn get_project(db: &PgPool, handle: &str) -> Result<Option<Project>, sqlx::Error> {

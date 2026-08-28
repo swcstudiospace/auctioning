@@ -1,6 +1,14 @@
 export const brand = {
   name: "auctioning.lol",
-  appUrl: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-  tagline:
-    "Windowed RP and live races for the projects people actually care about. Free RP is always non-cashable.",
+  url: "https://auctioning.lol",
+  tagline: "Play to rank. RP fuels the board.",
+  nav: [
+    { href: "/", label: "RANK" },
+    { href: "/tracks", label: "TRACK" },
+    { href: "/championship", label: "CHAMPIONSHIP" },
+    { href: "/live", label: "LIVE" },
+    { href: "/rules", label: "RULES" },
+    { href: "/news", label: "NEWS" },
+    { href: "/garage", label: "GARAGE" },
+  ],
 };

@@ -1,8 +1,3 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  // Static-first marketing site: every page prerenders, no server functions.
-  output: "export",
-  trailingSlash: true,
-};
-
+const nextConfig = { reactStrictMode: true };
 export default nextConfig;

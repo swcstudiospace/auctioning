@@ -1,103 +1,38 @@
 "use client";
-
-import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { brand } from "../../lib/brand";
-import styles from "./SiteNav.module.css";
-
-const PRIMARY = [
-  { href: "/live/", label: "Live" },
-  { href: "/tracks/", label: "Tracks" },
-  { href: "/championship/", label: "Championship" },
-  { href: "/news/", label: "News" },
-  { href: "/rules/", label: "Rules" },
-] as const;
+import { brand } from "@/lib/brand";
+import { ShinyButton } from "@/components/magic/ShinyButton";
+import { cn } from "@/lib/utils";
 
 export default function SiteNav() {
-  const [open, setOpen] = useState(false);
-  const pathname = usePathname();
-  const drawerId = useId();
-
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
-
-  const close = () => setOpen(false);
-
+  const path = usePathname();
   return (
-    <header className={styles.bar}>
-      <div className={styles.inner}>
-        <Link href="/" className={styles.brand}>
-          auctioning<span>.lol</span>
+    <header className="sticky top-0 z-40 border-b border-emerald-100 bg-white/90 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-4">
+        <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+          <span className="grid h-7 w-7 place-items-center rounded-md bg-forest text-xs text-white">a</span>
+          {brand.name}
         </Link>
-
-        <nav className={styles.desktop} aria-label="Primary">
-          <div className={styles.links}>
-            {PRIMARY.map((item) => (
-              <Link key={item.href} href={item.href} className={styles.link}>
+        <nav className="hidden flex-1 items-center justify-center gap-5 text-xs tracking-[0.16em] md:flex">
+          {brand.nav.map((item) => {
+            const active = item.href === "/" ? path === "/" : path.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "pb-1",
+                  active ? "border-b-2 border-forest text-ink" : "text-neutral-500"
+                )}
+              >
                 {item.label}
               </Link>
-            ))}
-          </div>
-          <Link href="/enter/" className={`ui-btn-gradient ${styles.cta}`}>
-            Enter Race
-          </Link>
-          <a href={brand.appUrl} className={styles.launch}>
-            Launch app
-          </a>
+            );
+          })}
         </nav>
-
-        <button
-          type="button"
-          className={styles.menuBtn}
-          aria-expanded={open}
-          aria-controls={drawerId}
-          aria-label={open ? "Close menu" : "Open menu"}
-          onClick={() => setOpen((value) => !value)}
-        >
-          <span className={open ? styles.iconOpen : styles.icon} aria-hidden="true" />
-        </button>
+        <ShinyButton href="/#claim">Claim #1</ShinyButton>
       </div>
-
-      <div
-        className={open ? `${styles.backdrop} ${styles.backdropOpen}` : styles.backdrop}
-        onClick={close}
-        hidden={!open}
-      />
-
-      <nav
-        id={drawerId}
-        className={open ? `${styles.drawer} ${styles.drawerOpen}` : styles.drawer}
-        aria-label="Mobile"
-        aria-hidden={!open}
-      >
-        {PRIMARY.map((item) => (
-          <Link key={item.href} href={item.href} className={styles.drawerLink} onClick={close}>
-            {item.label}
-          </Link>
-        ))}
-        <Link href="/enter/" className={`ui-btn-gradient ${styles.drawerCta}`} onClick={close}>
-          Enter Race
-        </Link>
-        <a href={brand.appUrl} className={styles.drawerLaunch} onClick={close}>
-          Launch app
-        </a>
-      </nav>
     </header>
   );
 }

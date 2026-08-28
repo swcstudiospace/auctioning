@@ -1,41 +1,27 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import CalendarRail from "../../components/live/CalendarRail";
-import LiveGrid from "../../components/live/LiveGrid";
-import Ticker from "../../components/live/Ticker";
-import styles from "../../components/live/live.module.css";
+import { Suspense } from "react";
+import Leaderboard from "@/components/board/Leaderboard";
+import { listProjects, type ProjectList } from "@/lib/api";
 
-export const metadata: Metadata = {
-  title: "Live Grid — 2026 Season 1 — auctioning.lol",
-  description:
-    "Live race grid for auctioning.lol 2026 Season 1. Paid RP is $1 = 1. Community RP is not money.",
-};
+export const dynamic = "force-dynamic";
 
-export default function LivePage() {
+async function loadBoard(sp: { page?: string; tag?: string; q?: string }): Promise<ProjectList | null> {
+  const page = Math.max(1, Number(sp.page || "1") || 1);
+  const tag = (sp.tag || "").trim();
+  const q = (sp.q || "").trim();
+  const res = await listProjects({ page, per_page: 50, tag: tag || undefined, q: q || undefined });
+  return res.ok ? res.data : null;
+}
+
+export default async function LivePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; tag?: string; q?: string }>;
+}) {
+  const sp = await searchParams;
+  const initial = await loadBoard(sp);
   return (
-    <main className={`ui-page ${styles.page}`}>
-      <header className={styles.seasonHead}>
-        <p className={styles.kicker}>2026 Season 1</p>
-        <h1>Live Grid</h1>
-      </header>
-
-      <nav className={styles.tabs} aria-label="Season boards">
-        <Link className={`${styles.tab} ${styles.tabActive}`} href="/live/" aria-current="page">
-          Live Grid
-        </Link>
-        <Link className={styles.tab} href="/championship/">
-          Championship
-        </Link>
-        <Link className={styles.tab} href="/news/">
-          News
-        </Link>
-      </nav>
-
-      <div className={styles.board}>
-        <LiveGrid />
-        <CalendarRail />
-      </div>
-      <Ticker />
-    </main>
+    <Suspense fallback={<main className="mx-auto max-w-6xl px-6 py-16 text-neutral-500">Loading board...</main>}>
+      <Leaderboard initial={initial} />
+    </Suspense>
   );
 }
