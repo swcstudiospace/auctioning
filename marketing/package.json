@@ -1,6 +1,6 @@
 {
   "name": "auctioning-marketing",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,13 +8,21 @@
     "start": "next start"
   },
   "dependencies": {
-    "next": "^15",
-    "react": "^19",
-    "react-dom": "^19"
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.23.12",
+    "lucide-react": "^0.542.0",
+    "motion": "^12.23.12",
+    "next": "^15.5.2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.12",
     "@types/node": "20.17.6",
     "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.3",
+    "tailwindcss": "^4.1.12",
     "typescript": "5.8.2"
   }
 }

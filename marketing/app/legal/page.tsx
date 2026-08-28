@@ -5,7 +5,7 @@ export const metadata = {
 
 export default function Legal() {
   return (
-    <main className="prose">
+    <main className="prose-legal">
       <h1>Legal posture</h1>
       <p>
         This page is plain-English information, not legal advice. We built

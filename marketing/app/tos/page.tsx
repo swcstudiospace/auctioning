@@ -6,7 +6,7 @@ export const metadata = {
 
 export default function Terms() {
   return (
-    <main className="prose">
+    <main className="prose-legal">
       <h1>Terms of service</h1>
       <p>
         This page is plain-English information, not legal advice. It describes how
