@@ -8,7 +8,7 @@ export default function CalendarRail() {
     <aside className={styles.rail} aria-label="Race calendar">
       <section className={`ui-card ${styles.railCard}`}>
         <div className={styles.railTop}>
-          <p className={styles.railLabel}>Sprint</p>
+          <p className={styles.railLabel}>Green Flag</p>
           <span className={styles.liveTag}>
             <span className={styles.liveDot} aria-hidden="true" />
             Live

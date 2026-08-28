@@ -1,0 +1,264 @@
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 10px 20px;
+  min-height: 64px;
+  position: relative;
+  z-index: 42;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--ink);
+  text-decoration: none;
+  letter-spacing: -0.03em;
+  flex-shrink: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.brand span {
+  color: var(--emerald);
+}
+
+.desktop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.link,
+.launch {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 10px 12px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.link:hover,
+.link:focus-visible,
+.launch:hover,
+.launch:focus-visible {
+  color: var(--ink);
+}
+
+.link:focus-visible,
+.launch:focus-visible,
+.cta:focus-visible,
+.menuBtn:focus-visible,
+.drawerLink:focus-visible,
+.drawerCta:focus-visible,
+.drawerLaunch:focus-visible {
+  outline: 2px solid var(--emerald);
+  outline-offset: 2px;
+}
+
+.cta {
+  color: #fff;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.cta:hover,
+.cta:focus-visible {
+  color: #fff;
+}
+
+.launch {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.menuBtn {
+  display: none;
+  position: relative;
+  z-index: 43;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.icon,
+.iconOpen {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--ink);
+  position: relative;
+}
+
+.icon::before,
+.icon::after,
+.iconOpen::before,
+.iconOpen::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 18px;
+  height: 2px;
+  background: var(--ink);
+}
+
+.icon::before {
+  top: -6px;
+}
+
+.icon::after {
+  top: 6px;
+}
+
+.iconOpen {
+  background: transparent;
+}
+
+.iconOpen::before {
+  top: 0;
+  transform: rotate(45deg);
+}
+
+.iconOpen::after {
+  top: 0;
+  transform: rotate(-45deg);
+}
+
+.backdrop {
+  display: none;
+}
+
+.drawer {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .desktop {
+    display: none;
+  }
+
+  .menuBtn {
+    display: inline-flex;
+  }
+
+  .backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: color-mix(in srgb, var(--ink) 28%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms ease;
+  }
+
+  .backdropOpen {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .drawer {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 41;
+    width: min(320px, 88vw);
+    height: 100dvh;
+    padding: 80px 16px 24px;
+    background: var(--surface);
+    border-left: 1px solid var(--line);
+    transform: translateX(100%);
+    transition: transform 180ms ease;
+    overflow-y: auto;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .drawerOpen {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+  }
+}
+
+.drawerLink,
+.drawerLaunch {
+  color: var(--ink);
+  text-decoration: none;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.drawerLink:hover,
+.drawerLaunch:hover {
+  background: color-mix(in srgb, var(--emerald) 8%, var(--surface));
+}
+
+.drawerCta {
+  color: #fff;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0 4px;
+  text-align: center;
+}
+
+.drawerCta:hover,
+.drawerCta:focus-visible {
+  color: #fff;
+}
+
+.drawerLaunch {
+  color: var(--muted);
+  border: 1px solid var(--line);
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .drawer,
+  .iconOpen::before,
+  .iconOpen::after {
+    transition: none;
+  }
+}

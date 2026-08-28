@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import styles from "./EnterRace.module.css";
 
 const STEP = 10;
 const MIN = 10;
@@ -11,99 +12,98 @@ export default function EnterRace() {
   const [connected, setConnected] = useState(false);
 
   return (
-    <div className="ui-enter-root">
-      <style>{css}</style>
-      <section className="ui-card ui-enter" aria-labelledby="enter-race-title">
-        <header className="ui-enter-head">
-          <p className="ui-enter-brand">auctioning.lol</p>
-          <p className="ui-enter-kicker" id="enter-race-title">
+    <div className={styles.root}>
+      <section className={`ui-card ${styles.enter}`} aria-labelledby="enter-race-title">
+        <header className={styles.head}>
+          <p className={styles.brand}>auctioning.lol</p>
+          <p className={styles.kicker} id="enter-race-title">
             <SproutIcon />
             Enter Race
           </p>
         </header>
 
-        <div className="ui-enter-grid">
-          <div className="ui-enter-col">
-            <h2 className="ui-enter-step">1. Connect wallet</h2>
-            <div className="ui-enter-row">
-              <span className="ui-enter-avatar" aria-hidden="true">
+        <div className={styles.grid}>
+          <div className={styles.col}>
+            <h2 className={styles.step}>1. Connect wallet</h2>
+            <div className={styles.row}>
+              <span className={styles.avatar} aria-hidden="true">
                 <GhostIcon />
               </span>
-              <span className="ui-enter-copy">
+              <span className={styles.copy}>
                 <strong>Phantom</strong>
                 <span>Solana</span>
               </span>
               <button
                 type="button"
-                className="ui-enter-connect"
+                className={styles.connect}
                 onClick={() => setConnected(true)}
                 aria-pressed={connected}
               >
-                <span className="ui-enter-dot" data-on={connected ? "1" : "0"} />
+                <span className={styles.dot} data-on={connected ? "1" : "0"} />
                 {connected ? "Connected" : "Connect"}
               </button>
             </div>
 
-            <h2 className="ui-enter-step">2. RP amount</h2>
-            <div className="ui-enter-stepper" role="group" aria-label="RP amount">
+            <h2 className={styles.step}>2. RP amount</h2>
+            <div className={styles.stepper} role="group" aria-label="RP amount">
               <button
                 type="button"
-                className="ui-enter-nudge"
+                className={styles.nudge}
                 onClick={() => setAmount((n) => Math.max(MIN, n - STEP))}
                 disabled={amount <= MIN}
                 aria-label={`Decrease by ${STEP} RP`}
               >
                 −
               </button>
-              <p className="ui-enter-amount" aria-live="polite">
+              <p className={styles.amount} aria-live="polite">
                 {amount}
               </p>
               <button
                 type="button"
-                className="ui-enter-nudge"
+                className={styles.nudge}
                 onClick={() => setAmount((n) => n + STEP)}
                 aria-label={`Increase by ${STEP} RP`}
               >
                 +
               </button>
             </div>
-            <p className="ui-enter-balance">RP Balance: 120</p>
+            <p className={styles.balance}>RP Balance: 120</p>
           </div>
 
-          <div className="ui-enter-col">
-            <h2 className="ui-enter-step">3. Payment</h2>
-            <div className="ui-enter-row">
-              <span className="ui-mark ui-enter-whop" aria-hidden="true">
+          <div className={styles.col}>
+            <h2 className={styles.step}>3. Payment</h2>
+            <div className={styles.row}>
+              <span className={`ui-mark ${styles.whop}`} aria-hidden="true">
                 W
               </span>
-              <span className="ui-enter-copy">
+              <span className={styles.copy}>
                 <strong>Whop Card</strong>
                 <span>Pay securely</span>
               </span>
-              <span className="ui-enter-secure">
+              <span className={styles.secure}>
                 <LockIcon />
                 Secure
               </span>
             </div>
 
-            <h2 className="ui-enter-step ui-enter-pred-label">
+            <h2 className={`${styles.step} ${styles.predLabel}`}>
               Live rank prediction
               <InfoIcon />
             </h2>
-            <p className="ui-enter-pred-copy">A bid of 410 RP puts you</p>
-            <p className="ui-enter-place">P3</p>
-            <p className="ui-enter-live">
+            <p className={styles.predCopy}>A bid of 410 RP puts you</p>
+            <p className={styles.place}>P3</p>
+            <p className={styles.live}>
               <LiveArrow />
               Top bids update live
             </p>
           </div>
         </div>
 
-        <button type="button" className="ui-btn-gradient ui-enter-submit">
+        <button type="button" className={`ui-btn-gradient ${styles.submit}`}>
           Add RP
           <LiveArrow />
         </button>
-        <p className="ui-enter-caption">
+        <p className={styles.caption}>
           RP is non-refundable. For race use only.
         </p>
       </section>
@@ -216,255 +216,3 @@ function LiveArrow() {
     </svg>
   );
 }
-
-const css = `
-.ui-enter-root {
-  width: min(100%, 44rem);
-  margin: 0 auto;
-}
-.ui-enter {
-  padding: 1.75rem 1.75rem 1.35rem;
-  color: var(--ink);
-}
-.ui-enter-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.75rem;
-}
-.ui-enter-brand {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-}
-.ui-enter-kicker {
-  margin: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  color: var(--emerald);
-  font-size: 0.82rem;
-  font-weight: 600;
-}
-.ui-enter-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.75rem 2rem;
-}
-.ui-enter-col {
-  min-width: 0;
-}
-.ui-enter-step {
-  margin: 0 0 0.65rem;
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.ui-enter-col > .ui-enter-step:not(:first-child) {
-  margin-top: 1.35rem;
-}
-.ui-enter-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-height: 3.35rem;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 0.9rem;
-  background: var(--surface);
-}
-.ui-enter-avatar {
-  display: grid;
-  place-items: center;
-  width: 2.35rem;
-  height: 2.35rem;
-  border-radius: 999px;
-  background: var(--bg);
-  flex-shrink: 0;
-}
-.ui-enter-whop {
-  display: grid;
-  place-items: center;
-  width: 2.15rem;
-  height: 2.15rem;
-  border-radius: 0.55rem;
-  background: var(--ink);
-  color: var(--surface);
-  font-size: 0.95rem;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-.ui-enter-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-  min-width: 0;
-  flex: 1;
-}
-.ui-enter-copy strong {
-  font-size: 0.92rem;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-}
-.ui-enter-copy span {
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-.ui-enter-connect {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0;
-  padding: 0.2rem 0.15rem;
-  border: 0;
-  background: transparent;
-  color: var(--emerald);
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 650;
-  cursor: pointer;
-  border-radius: 0.3rem;
-}
-.ui-enter-connect:hover {
-  color: var(--ink);
-}
-.ui-enter-connect:focus-visible,
-.ui-enter-nudge:focus-visible,
-.ui-enter-submit:focus-visible {
-  outline: 2px solid var(--emerald);
-  outline-offset: 2px;
-}
-.ui-enter-dot {
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 999px;
-  background: var(--line);
-}
-.ui-enter-dot[data-on="1"] {
-  background: var(--emerald);
-}
-.ui-enter-secure {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-.ui-enter-stepper {
-  display: grid;
-  grid-template-columns: 2.75rem 1fr 2.75rem;
-  border: 1px solid var(--line);
-  border-radius: 0.7rem;
-  overflow: hidden;
-  background: var(--surface);
-}
-.ui-enter-nudge {
-  margin: 0;
-  border: 0;
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  font-size: 1.15rem;
-  line-height: 1;
-  cursor: pointer;
-  min-height: 2.85rem;
-}
-.ui-enter-nudge:hover:not(:disabled) {
-  background: var(--bg);
-}
-.ui-enter-nudge:disabled {
-  color: var(--line);
-  cursor: not-allowed;
-}
-.ui-enter-nudge:first-child {
-  border-right: 1px solid var(--line);
-}
-.ui-enter-nudge:last-child {
-  border-left: 1px solid var(--line);
-}
-.ui-enter-amount {
-  margin: 0;
-  display: grid;
-  place-items: center;
-  font-size: 1.05rem;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.03em;
-}
-.ui-enter-balance {
-  margin: 0.55rem 0 0;
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-.ui-enter-pred-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-.ui-enter-pred-label svg {
-  color: var(--muted);
-}
-.ui-enter-pred-copy {
-  margin: 0.15rem 0 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-.ui-enter-place {
-  margin: 0.15rem 0 0.55rem;
-  color: var(--emerald);
-  font-size: 2.35rem;
-  font-weight: 700;
-  letter-spacing: -0.06em;
-  line-height: 1;
-}
-.ui-enter-live {
-  margin: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-.ui-enter-submit {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  width: 100%;
-  margin-top: 1.6rem;
-  min-height: 3.1rem;
-  border: 0;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.ui-enter-caption {
-  margin: 0.85rem 0 0;
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-@media (max-width: 700px) {
-  .ui-enter {
-    padding: 1.25rem 1.15rem 1.1rem;
-  }
-  .ui-enter-grid {
-    grid-template-columns: 1fr;
-    gap: 0.35rem;
-  }
-  .ui-enter-col > .ui-enter-step:not(:first-child) {
-    margin-top: 1.15rem;
-  }
-  .ui-enter-place {
-    font-size: 2rem;
-  }
-}
-`;

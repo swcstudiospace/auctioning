@@ -1,0 +1,288 @@
+.root {
+  width: min(100%, 44rem);
+  margin: 0 auto;
+}
+
+.enter {
+  padding: 1.75rem 1.75rem 1.35rem;
+  color: var(--ink);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+
+.brand {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.kicker {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--emerald);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.75rem 2rem;
+}
+
+.col {
+  min-width: 0;
+}
+
+.step {
+  margin: 0 0 0.65rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.col > .step:not(:first-child) {
+  margin-top: 1.35rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.35rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--surface);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 999px;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.whop {
+  display: grid;
+  place-items: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 0.55rem;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 0.95rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.copy strong {
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.copy span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.connect {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.2rem 0.15rem;
+  border: 0;
+  background: transparent;
+  color: var(--emerald);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+  border-radius: 0.3rem;
+}
+
+.connect:hover {
+  color: var(--ink);
+}
+
+.connect:focus-visible,
+.nudge:focus-visible,
+.submit:focus-visible {
+  outline: 2px solid var(--emerald);
+  outline-offset: 2px;
+}
+
+.dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.dot[data-on="1"] {
+  background: var(--emerald);
+}
+
+.secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: 2.75rem 1fr 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.nudge {
+  margin: 0;
+  border: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  min-height: 2.85rem;
+}
+
+.nudge:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+.nudge:disabled {
+  color: var(--line);
+  cursor: not-allowed;
+}
+
+.nudge:first-child {
+  border-right: 1px solid var(--line);
+}
+
+.nudge:last-child {
+  border-left: 1px solid var(--line);
+}
+
+.amount {
+  margin: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.05rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.balance {
+  margin: 0.55rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.predLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.predLabel svg {
+  color: var(--muted);
+}
+
+.predCopy {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.place {
+  margin: 0.15rem 0 0.55rem;
+  color: var(--emerald);
+  font-size: 2.35rem;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  line-height: 1;
+}
+
+.live {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 1.6rem;
+  min-height: 3.1rem;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.caption {
+  margin: 0.85rem 0 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 700px) {
+  .enter {
+    padding: 1.25rem 1.15rem 1.1rem;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .col > .step:not(:first-child) {
+    margin-top: 1.15rem;
+  }
+
+  .place {
+    font-size: 2rem;
+  }
+}

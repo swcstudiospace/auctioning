@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import { brand } from "../lib/brand";
+import SiteNav from "../components/chrome/SiteNav";
+import SiteFooter from "../components/chrome/SiteFooter";
 
 const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
@@ -9,40 +11,26 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://auctioning.lol"),
   title: "auctioning.lol — support the loudest projects",
   description:
     "Reputation points, weekly stipends, and live races for the projects people actually care about. Free RP is always non-cashable.",
+  openGraph: {
+    title: "auctioning.lol — support the loudest projects",
+    description:
+      "Reputation points, weekly stipends, and live races for the projects people actually care about. Free RP is always non-cashable.",
+    siteName: brand.name,
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className={ibmPlexMono.className}>
-        <nav className="nav">
-          <Link href="/" className="brand">
-            auctioning<span>.lol</span>
-          </Link>
-          <div>
-            <Link href="/live">Live</Link>
-            <Link href="/tracks">Tracks</Link>
-            <Link href="/championship">Championship</Link>
-            <Link href="/news">News</Link>
-            <Link href="/enter">Enter</Link>
-            <Link href="/rules">Rules</Link>
-            <a href="/tos/">Terms</a>
-            <a href="/privacy/">Privacy</a>
-            <a href="/legal/">Legal</a>
-            <Link href="/enter" className="ui-btn-gradient">
-              Enter Race
-            </Link>
-          </div>
-        </nav>
+        <SiteNav />
         {children}
-        <footer>
-          auctioning.lol is a community project. Free RP is promotional, non-cashable and
-          off-chain; paid RP provenance settles on Solana mainnet. Not financial advice, not
-          an investment product.
-        </footer>
+        <SiteFooter />
       </body>
     </html>
   );

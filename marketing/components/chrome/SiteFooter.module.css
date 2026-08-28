@@ -1,0 +1,38 @@
+.footer {
+  max-width: 1120px;
+  margin: 64px auto 32px;
+  padding: 20px 20px 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.disclaimer {
+  margin: 0 0 12px;
+  max-width: 72ch;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 4px;
+}
+
+.links a {
+  color: var(--muted);
+  text-decoration: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px 0 0;
+}
+
+.links a:hover,
+.links a:focus-visible {
+  color: var(--ink);
+}
+
+.links a:focus-visible {
+  outline: 2px solid var(--emerald);
+  outline-offset: 2px;
+}

@@ -1,16 +1,17 @@
+import styles from "./RulesGrid.module.css";
+
 export default function RulesGrid() {
   return (
-    <section className="ui-rules" aria-labelledby="rules-heading">
-      <style>{css}</style>
-      <h1 id="rules-heading" className="ui-rules-title">
+    <section className={styles.section} aria-labelledby="rules-heading">
+      <h1 id="rules-heading" className={styles.title}>
         HOW <span>THE</span> RACE WORKS
       </h1>
-      <ul className="ui-rules-grid">
+      <ul className={styles.grid}>
         {RULES.map((rule) => (
-          <li key={rule.title} className="ui-card ui-rules-card">
-            <header className="ui-rules-card-head">
+          <li key={rule.title} className={`ui-card ${styles.card}`}>
+            <header className={styles.cardHead}>
               <h2>{rule.title}</h2>
-              <span className="ui-rules-icon" data-tone={rule.tone} aria-hidden="true">
+              <span className={styles.icon} data-tone={rule.tone} aria-hidden="true">
                 {rule.icon}
               </span>
             </header>
@@ -18,7 +19,7 @@ export default function RulesGrid() {
           </li>
         ))}
       </ul>
-      <p className="ui-rules-foot">Built for fun. Driven by community.</p>
+      <p className={styles.foot}>Built for fun. Driven by community.</p>
     </section>
   );
 }
@@ -121,88 +122,3 @@ function StarIcon() {
     </svg>
   );
 }
-
-const css = `
-.ui-rules {
-  width: min(100%, 68rem);
-  margin: 0 auto;
-  color: var(--ink);
-}
-.ui-rules-title {
-  margin: 0 0 1.75rem;
-  font-size: clamp(1.65rem, 4vw, 2.55rem);
-  font-weight: 700;
-  letter-spacing: -0.045em;
-  line-height: 1.05;
-  text-transform: uppercase;
-}
-.ui-rules-title span {
-  color: var(--pink);
-}
-.ui-rules-grid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-}
-.ui-rules-card {
-  padding: 1.15rem 1.15rem 1.3rem;
-  min-height: 11.5rem;
-}
-.ui-rules-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-}
-.ui-rules-card h2 {
-  margin: 0;
-  font-size: 1.35rem;
-  font-weight: 650;
-  letter-spacing: -0.03em;
-}
-.ui-rules-icon {
-  display: grid;
-  place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  flex-shrink: 0;
-}
-.ui-rules-icon[data-tone="emerald"] {
-  color: var(--emerald);
-}
-.ui-rules-icon[data-tone="pink"] {
-  color: var(--pink);
-}
-.ui-rules-card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.92rem;
-  line-height: 1.45;
-  max-width: 16ch;
-}
-.ui-rules-foot {
-  margin: 2.5rem 0 0;
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-@media (max-width: 900px) {
-  .ui-rules-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  .ui-rules-card p {
-    max-width: none;
-  }
-}
-@media (max-width: 560px) {
-  .ui-rules-grid {
-    grid-template-columns: 1fr;
-  }
-  .ui-rules-card {
-    min-height: 0;
-  }
-}
-`;
