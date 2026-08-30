@@ -79,6 +79,8 @@ async fn run_once(db: &PgPool, cfg: &WorkerConfig) {
         Err(e) => tracing::warn!(error = %e, "overdue open races query failed"),
     }
 
+    tick_calendar(db).await;
+
     if let Some(secret) = cfg.authority_secret_b58.as_deref() {
         match auctioning_core::load_authority(secret) {
             Ok(auth) => match open_race_rows(db).await {
@@ -157,6 +159,38 @@ async fn ws_loop(db: PgPool, cfg: WorkerConfig) {
             Err(e) => tracing::warn!(error = %e, "er ws connect failed"),
         }
         tokio::time::sleep(Duration::from_secs(15)).await;
+    }
+}
+
+async fn tick_calendar(db: &PgPool) {
+    if let Err(e) = crate::race_engine::archive_expired_windows(db, Utc::now()).await {
+        tracing::warn!(error = %e, "archive_expired_windows failed");
+    }
+    if let Err(e) = crate::race_engine::backfill_archived_finals(db).await {
+        tracing::warn!(error = %e, "backfill_archived_finals failed");
+    }
+    match crate::race_engine::list_windows(db, 50).await {
+        Ok(windows) => {
+            for w in windows.iter().filter(|w| w.status == "live") {
+                match crate::race_engine::persist_snapshot_if_events(db, w).await {
+                    Ok((_, events)) if !events.is_empty() => {
+                        tracing::info!(slug = %w.slug, n = events.len(), "race events persisted");
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(
+                        error = %e,
+                        slug = %w.slug,
+                        "persist_snapshot_if_events failed"
+                    ),
+                }
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "list_windows failed"),
+    }
+    match crate::narrative::mint_unposted_events(db, 20).await {
+        Ok(n) if n > 0 => tracing::info!(events = n, "narrative drafts minted"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "mint_unposted_events failed"),
     }
 }
 

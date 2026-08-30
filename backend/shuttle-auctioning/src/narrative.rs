@@ -527,6 +527,39 @@ pub async fn persist_bundle(
     Ok(out)
 }
 
+/// Template-mint drafts for worthy events that have no posts yet. Never auto-publishes.
+pub async fn mint_unposted_events(db: &PgPool, limit: i64) -> Result<u64, sqlx::Error> {
+    let rows: Vec<RaceEventRow> = sqlx::query_as(
+        r#"
+        SELECT id, race_window_id, project_handle, other_handle, event_type,
+               title, summary, is_narrative_worthy, created_at, payload
+        FROM race_events
+        WHERE is_narrative_worthy
+          AND NOT COALESCE(content_generated, FALSE)
+        ORDER BY created_at ASC
+        LIMIT $1
+        "#,
+    )
+    .bind(limit.clamp(1, 50))
+    .fetch_all(db)
+    .await?;
+
+    let mut minted = 0u64;
+    for row in rows {
+        let window = crate::race_engine::window_by_id(db, row.race_window_id)
+            .await
+            .ok()
+            .flatten();
+        let Some(input) = NarrativeInput::from_row(&row, window.as_ref()) else {
+            continue;
+        };
+        let bundle = generate_narrative(&input, None, Utc::now());
+        persist_bundle(db, row.id, &bundle).await?;
+        minted += 1;
+    }
+    Ok(minted)
+}
+
 pub async fn tape_for_window(
     db: &PgPool,
     window_id: Uuid,

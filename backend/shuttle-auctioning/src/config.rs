@@ -39,39 +39,41 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    pub fn from_secret_store(store: &SecretStore) -> Self {
+    fn from_get(get: impl Fn(&str) -> Option<String>) -> Self {
         Self {
-            whop_api_key: store.get("WHOP_API_KEY"),
-            whop_webhook_secret: store.get("WHOP_WEBHOOK_SECRET"),
-            weekly_free_rp: store
-                .get("WEEKLY_FREE_RP")
+            whop_api_key: get("WHOP_API_KEY"),
+            whop_webhook_secret: get("WHOP_WEBHOOK_SECRET"),
+            weekly_free_rp: get("WEEKLY_FREE_RP")
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(100),
-            program_id: store
-                .get("PROGRAM_ID")
+                .unwrap_or(50),
+            program_id: get("PROGRAM_ID")
                 .unwrap_or_else(|| "3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs".to_string()),
-            mainnet_rpc: store
-                .get("MAINNET_RPC")
+            mainnet_rpc: get("MAINNET_RPC")
                 .unwrap_or_else(|| "https://api.mainnet-beta.solana.com".into()),
-            er_rpc: store
-                .get("ER_RPC")
-                .unwrap_or_else(|| "https://devnet-er.magicblock.app".into()),
-            er_ws: store.get("ER_WS").unwrap_or_default(),
-            authority_secret_b58: store.get("AUTHORITY_SECRET"),
-            max_race_secs: store
-                .get("MAX_RACE_SECS")
+            er_rpc: get("ER_RPC").unwrap_or_else(|| "https://devnet-er.magicblock.app".into()),
+            er_ws: get("ER_WS").unwrap_or_default(),
+            authority_secret_b58: get("AUTHORITY_SECRET"),
+            max_race_secs: get("MAX_RACE_SECS")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(300),
-            ingest_secret: store.get("INGEST_SECRET"),
-            narrative_llm_url: store.get("NARRATIVE_LLM_URL"),
-            narrative_llm_key: store.get("NARRATIVE_LLM_KEY"),
-            supergrok_authorize_url: store.get("SUPERGROK_AUTHORIZE_URL"),
-            supergrok_token_url: store.get("SUPERGROK_TOKEN_URL"),
-            supergrok_client_id: store.get("SUPERGROK_CLIENT_ID"),
-            supergrok_client_secret: store.get("SUPERGROK_CLIENT_SECRET"),
-            supergrok_redirect_uri: store.get("SUPERGROK_REDIRECT_URI"),
-            supergrok_completion_url: store.get("SUPERGROK_COMPLETION_URL"),
+            ingest_secret: get("INGEST_SECRET"),
+            narrative_llm_url: get("NARRATIVE_LLM_URL"),
+            narrative_llm_key: get("NARRATIVE_LLM_KEY"),
+            supergrok_authorize_url: get("SUPERGROK_AUTHORIZE_URL"),
+            supergrok_token_url: get("SUPERGROK_TOKEN_URL"),
+            supergrok_client_id: get("SUPERGROK_CLIENT_ID"),
+            supergrok_client_secret: get("SUPERGROK_CLIENT_SECRET"),
+            supergrok_redirect_uri: get("SUPERGROK_REDIRECT_URI"),
+            supergrok_completion_url: get("SUPERGROK_COMPLETION_URL"),
         }
+    }
+
+    pub fn from_secret_store(store: &SecretStore) -> Self {
+        Self::from_get(|k| store.get(k))
+    }
+
+    pub fn from_env() -> Self {
+        Self::from_get(|k| std::env::var(k).ok().filter(|s| !s.is_empty()))
     }
 
     /// Live polish is opt-in. Templates always run when this is false.

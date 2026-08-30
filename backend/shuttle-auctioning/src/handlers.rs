@@ -14,7 +14,7 @@ use crate::onchain::{
 };
 use crate::race_engine;
 use crate::whop::{self, WhopWebhookEvent};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -377,13 +377,84 @@ pub async fn import_projects(
     Ok(Json(json!({ "imported": imported, "updated": updated })))
 }
 
+#[derive(Deserialize)]
+pub struct SubmitProjectRequest {
+    pub url: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub blurb: Option<String>,
+    #[serde(default)]
+    pub owner_wallet: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+/// Public: list a website onto the catalog at 0 RP. No ingest secret.
+/// Duplicate URL/host returns the existing row with created=false.
+pub async fn submit_project(
+    State(state): State<crate::AppState>,
+    Json(req): Json<SubmitProjectRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let outcome = catalog::submit_site(
+        &state.db,
+        catalog::SubmitSite {
+            url: req.url,
+            display_name: req.display_name,
+            blurb: req.blurb,
+            owner_wallet: req.owner_wallet,
+            tags: req.tags,
+        },
+    )
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Configuration(msg) => AppError::BadRequest(msg.to_string()),
+        other => AppError::from(other),
+    })?;
+    Ok(Json(json!({
+        "created": outcome.created,
+        "project": outcome.project,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListProjectsQuery {
+    pub page: Option<i64>,
+    pub per_page: Option<i64>,
+    pub tag: Option<String>,
+    pub q: Option<String>,
+}
+
+/// Ranked catalog. Query params: `page` (default 1), `per_page` (default 50,
+/// max 50), optional `tag` (exact tag match) and `q` (substring over name,
+/// handle, blurb, url). Response is `{projects, total, page, per_page, tags}`
+/// so older clients that only read `projects` keep working.
 pub async fn list_projects(
     State(state): State<crate::AppState>,
+    Query(query): Query<ListProjectsQuery>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let projects = catalog::list_projects(&state.db, 500)
+    let page = query.page.unwrap_or(1);
+    let per_page = query.per_page.unwrap_or(50);
+    let tag = query
+        .tag
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let q = query
+        .q
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let result = catalog::list_projects_page(&state.db, page, per_page, tag, q)
         .await
         .map_err(AppError::from)?;
-    Ok(Json(json!({ "projects": projects })))
+    Ok(Json(json!({
+        "projects": result.projects,
+        "total": result.total,
+        "page": result.page,
+        "per_page": result.per_page,
+        "tags": result.tags,
+    })))
 }
 
 pub async fn get_project(
@@ -462,6 +533,20 @@ pub async fn project_allocations(
         .await
         .map_err(AppError::from)?;
     Ok(Json(json!({ "allocations": rows })))
+}
+
+/// Public: increment first-party board clicks for CPC / attention on hover.
+pub async fn record_project_click(
+    State(state): State<crate::AppState>,
+    Path(handle): Path<String>,
+) -> AppResult<Json<serde_json::Value>> {
+    match catalog::record_click(&state.db, &handle)
+        .await
+        .map_err(AppError::from)?
+    {
+        Some(clicks) => Ok(Json(json!({ "handle": handle, "clicks": clicks }))),
+        None => Err(AppError::NotFound),
+    }
 }
 
 /// Prepare an unsigned register_project transaction for the connected wallet.
