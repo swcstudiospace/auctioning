@@ -5,6 +5,8 @@ import Link from "next/link";
 import { MagicCard } from "@/components/magic/MagicCard";
 import { ShinyButton } from "@/components/magic/ShinyButton";
 import { BlurFade } from "@/components/magic/BlurFade";
+import { ActivePaceChip } from "@/components/chrome/ActivePaceChip";
+import { RaceBadge } from "@/components/chrome/RaceBadge";
 import CompanyIcon from "@/components/chrome/CompanyIcon";
 import { getJson, listProjects, type GridSlot, type RaceEvent, type RaceWindow } from "@/lib/api";
 import { fetchCalendar, fetchChampionship, type ChampionshipStanding, type RaceCalendar } from "@/lib/race";
@@ -26,16 +28,16 @@ function kindOf(w: RaceWindow | undefined): string {
 }
 
 function isSprint(w: RaceWindow | undefined) {
-  return /SPRINT/.test(kindOf(w));
+  return /SPRINT|GREEN_FLAG|PACE_LAP/.test(kindOf(w));
 }
 function isGp(w: RaceWindow | undefined) {
-  return /GRAND_PRIX|GRAND_TOUR|GRAND PRIX/.test(kindOf(w));
+  return /GRAND_PRIX|GRAND_TOUR|GRAND PRIX|SECTOR_SCRAP/.test(kindOf(w));
 }
 function isChamp(w: RaceWindow | undefined) {
-  return /CHAMPIONSHIP/.test(kindOf(w));
+  return /CHAMPIONSHIP|TITLE_FIGHT/.test(kindOf(w));
 }
 function isSpecial(w: RaceWindow | undefined) {
-  return /SPECIAL/.test(kindOf(w));
+  return /SPECIAL|PHOTO_CARD/.test(kindOf(w));
 }
 
 function remainingSecs(w: RaceWindow | undefined): number {
@@ -81,8 +83,8 @@ export default function LiveRace() {
   const [now, setNow] = useState(Date.now());
 
   const windows = calendar?.windows || [];
-  const sprint = windows.find((w) => isSprint(w) && w.status === "live") || windows.find(isSprint);
-  const gp = windows.find((w) => isGp(w) && w.status === "live") || windows.find(isGp);
+  const sprint = windows.find((w) => isSprint(w) && (w.status === "live" || w.status === "scheduled"));
+  const gp = windows.find((w) => isGp(w) && (w.status === "live" || w.status === "scheduled"));
   const champWindow = windows.find(isChamp);
   const special = windows.find(isSpecial);
   const featured = calendar?.featured;
@@ -183,10 +185,13 @@ export default function LiveRace() {
             {featured?.because ? " " + featured.because : ""}
           </p>
         </BlurFade>
-        <span className="chip">
-          <span className="mr-2 inline-block h-2 w-2 rounded-full bg-forest" />
-          {active?.status === "live" ? "LIVE" : "CALENDAR"}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <ActivePaceChip />
+          <span className="chip">
+            <span className="mr-2 inline-block h-2 w-2 rounded-full bg-forest" />
+            {active?.status === "live" ? "LIVE" : "CALENDAR"}
+          </span>
+        </div>
       </div>
 
       <div className="mt-8 flex flex-wrap gap-2">
@@ -239,6 +244,33 @@ export default function LiveRace() {
                 <p className="mt-6 text-sm text-neutral-500">No points until a sprint or GP archives.</p>
               )}
             </div>
+          ) : mode === "specials" ? (
+            <div className="p-5">
+              <h2 className="font-semibold">Operator cards</h2>
+              <p className="mt-2 text-sm text-neutral-500">
+                Paid RP stays $1 = 1. Cards only add event_multiplier pace. They do not stack unless rules say so.
+              </p>
+              {calendar?.active_card?.name || calendar?.active_card?.title ? (
+                <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+                  <p className="k text-forest">{calendar.active_card.slug || "live"}</p>
+                  <h3 className="mt-1 text-2xl font-bold">
+                    {calendar.active_card.name || calendar.active_card.title}
+                  </h3>
+                  {calendar.active_card.multiplier_bps ? (
+                    <p className="mt-2 font-mono text-lg">
+                      {(calendar.active_card.multiplier_bps / 10000).toFixed(2).replace(/\.00$/, "")}× pace
+                    </p>
+                  ) : null}
+                  {calendar.active_card.ends_at ? (
+                    <p className="mt-1 text-xs text-neutral-500">Until {calendar.active_card.ends_at}</p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-6 text-sm text-neutral-500">
+                  No live card. Afterburner, Night Grid, Pit Lane, and Final Lap land here when an operator opens them.
+                </p>
+              )}
+            </div>
           ) : (
             <>
               <div className="flex items-center justify-between px-5 py-4">
@@ -271,16 +303,14 @@ export default function LiveRace() {
                         </td>
                         <td className="font-mono">{row.race_rp.toLocaleString()}</td>
                         <td className="font-mono text-neutral-500">{row.gap}</td>
-                        <td className="text-xs text-forest">{row.badge || "—"}</td>
+                        <td className="text-xs text-forest"><RaceBadge badge={row.badge} /></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               ) : (
                 <p className="px-5 py-10 text-sm text-neutral-500">
-                  {mode === "specials"
-                    ? "No specials this weekend. Multiplier events land here."
-                    : "No fuel in this window yet. Race RP is spend inside the event, not lifetime rank. Fuel a listing to light the grid."}
+                  No fuel in this window yet. Race RP is spend inside the event, not lifetime rank. Fuel a listing to light the grid.
                 </p>
               )}
               <div className="p-5">
@@ -294,19 +324,24 @@ export default function LiveRace() {
 
         <div className="space-y-4">
           <MagicCard>
-            <div className="k">CALENDAR RAIL</div>
+            <div className="k">Calendar rail</div>
             <div className="mt-3 space-y-4 text-sm">
+              {featured?.because ? (
+                <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-neutral-700">{featured.because}</p>
+              ) : null}
               <div>
                 <div className="flex justify-between font-semibold">
                   <span>Sprint</span>
                   <span className="font-mono text-forest">{sprint ? clock(remainingSecs(sprint)) : "—"}</span>
                 </div>
-                <p className="text-neutral-500">{sprint?.name || "No sprint window"}</p>
+                <p className="text-neutral-500">
+                  {sprint ? `${sprint.status === "live" ? "Live" : "Upcoming"} · ${sprint.name}` : "No sprint window"}
+                </p>
               </div>
               <div>
                 <div className="flex justify-between font-semibold">
                   <span>Grand Prix</span>
-                  <span className="font-mono text-forest">{gp ? gpDay(gp) : "—"}</span>
+                  <span className="font-mono text-forest">{gp ? `${gpDay(gp)} · ${clock(remainingSecs(gp))}` : "—"}</span>
                 </div>
                 <p className="text-neutral-500">{gp?.name || "No GP window"}</p>
               </div>

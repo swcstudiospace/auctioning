@@ -535,6 +535,20 @@ pub async fn project_allocations(
     Ok(Json(json!({ "allocations": rows })))
 }
 
+/// Public: increment first-party board clicks for CPC / attention on hover.
+pub async fn record_project_click(
+    State(state): State<crate::AppState>,
+    Path(handle): Path<String>,
+) -> AppResult<Json<serde_json::Value>> {
+    match catalog::record_click(&state.db, &handle)
+        .await
+        .map_err(AppError::from)?
+    {
+        Some(clicks) => Ok(Json(json!({ "handle": handle, "clicks": clicks }))),
+        None => Err(AppError::NotFound),
+    }
+}
+
 /// Prepare an unsigned register_project transaction for the connected wallet.
 /// Client signs with Phantom and broadcasts. Wires dApp <-> Anchor.
 pub async fn prepare_register_project(

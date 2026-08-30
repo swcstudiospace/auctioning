@@ -40,3 +40,7 @@ name = "auctioning-backend"
 
 [features]
 sqlx-test = []
+
+[[bin]]
+name = "auctioning-api-runner"
+path = "src/bin/auctioning-api-runner.rs"

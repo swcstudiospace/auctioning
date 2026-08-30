@@ -70,6 +70,7 @@ export type Project = {
   tags: string[];
   total_rp: number;
   rank: number;
+  clicks?: number;
 };
 
 export type ProjectList = {
@@ -192,6 +193,44 @@ export async function supportProject(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+export async function recordClick(handle: string): Promise<void> {
+  await apiFetch(`/v1/projects/${encodeURIComponent(handle)}/click`, { method: "POST" });
+}
+
+export type NarrativeQueueRow = {
+  id: string;
+  event_id: string;
+  channel: string;
+  body: string;
+  publish_status: string;
+  external_post_id?: string | null;
+  last_error?: string | null;
+  retryable?: boolean;
+  created_at: string;
+};
+
+export async function narrativeQueue(status?: string): Promise<NarrativeQueueRow[]> {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  const rows = await getJson<NarrativeQueueRow[]>(`/v1/narrative/queue${qs}`);
+  return Array.isArray(rows) ? rows : [];
+}
+
+export async function narrativeDecide(
+  id: string,
+  action: "approve" | "skip" | "mark-published",
+  extra?: { external_post_id?: string },
+): Promise<ApiResult<NarrativeQueueRow>> {
+  const path = `/v1/narrative/posts/${encodeURIComponent(id)}/${action}`;
+  if (action === "mark-published") {
+    return apiFetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(extra || {}),
+    });
+  }
+  return apiFetch(path, { method: "POST" });
 }
 
 export function predictRank(projects: Project[], handle: string, newTotal: number): number {

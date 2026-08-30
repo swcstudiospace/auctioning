@@ -43,6 +43,11 @@ async fn main(
     #[shuttle_shared_db::Postgres] pool: sqlx::PgPool,
     #[shuttle_runtime::Secrets] secrets: SecretStore,
 ) -> shuttle_axum::ShuttleAxum {
+    let cfg = config::AppConfig::from_secret_store(&secrets);
+    Ok(build_app(pool, cfg).await.into())
+}
+
+pub async fn build_app(pool: sqlx::PgPool, cfg: config::AppConfig) -> Router {
     // Run embedded migrations on boot.
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -72,8 +77,6 @@ async fn main(
         Ok(w) => tracing::info!(slug = %w.slug, "default race window ready"),
         Err(e) => tracing::error!("ensure_default_window failed: {e}"),
     }
-
-    let cfg = config::AppConfig::from_secret_store(&secrets);
 
     race_worker::spawn(
         pool.clone(),
@@ -109,6 +112,10 @@ async fn main(
         .route(
             "/v1/projects/{handle}/allocations",
             get(handlers::project_allocations),
+        )
+        .route(
+            "/v1/projects/{handle}/click",
+            post(handlers::record_project_click),
         )
         .route("/v1/whop/webhook", post(handlers::whop_webhook))
         .route(
@@ -196,5 +203,5 @@ async fn main(
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);
 
-    Ok(router.into())
+    router
 }

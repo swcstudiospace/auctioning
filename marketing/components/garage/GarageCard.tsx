@@ -1,5 +1,6 @@
 import Link from "next/link";
 import CompanyIcon from "@/components/chrome/CompanyIcon";
+import { RaceBadge } from "@/components/chrome/RaceBadge";
 import { MagicCard } from "@/components/magic/MagicCard";
 import type { GridSlot, Project } from "@/lib/api";
 import { metricsFromProject, type HoverMetrics } from "@/lib/race";
@@ -35,7 +36,8 @@ export default function GarageCard({
   if (compact) {
     return (
       <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-lg">
-        <div className="flex items-start justify-between gap-3">
+        <p className="k">Identity</p>
+        <div className="mt-1 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <CompanyIcon url={stats.url} name={stats.displayName} size={36} />
             <div className="min-w-0">
@@ -47,9 +49,9 @@ export default function GarageCard({
               ) : null}
             </div>
           </div>
-          {stats.badge ? <span className="chip shrink-0">{stats.badge.replace(/_/g, " ")}</span> : null}
+          {stats.badge ? <RaceBadge badge={stats.badge} /> : null}
         </div>
-        <p className="k mt-3">RACING</p>
+        <p className="k mt-3">Racing</p>
         <div className="mt-1 grid grid-cols-5 gap-1">
           <Metric k="POS" v={`P${stats.position}`} />
           <Metric k="GAP" v={fmt(stats.gap)} />
@@ -57,7 +59,7 @@ export default function GarageCard({
           <Metric k="VEL" v={`${stats.velocity}`} />
           <Metric k="PASS" v={stats.lastOvertake || "—"} />
         </div>
-        <p className="k mt-3">INTEL</p>
+        <p className="k mt-3">Intel</p>
         <div className="mt-1 grid grid-cols-5 gap-1">
           <Metric k="RACE" v={fmt(stats.raceRp)} />
           <Metric k="LIFE" v={fmt(stats.lifetimeRp)} />
@@ -83,7 +85,7 @@ export default function GarageCard({
             {stats.blurb ? <p className="mt-2 max-w-xl text-neutral-600">{stats.blurb}</p> : null}
           </div>
         </div>
-        <span className="chip shrink-0">{stats.badge ? stats.badge.replace(/_/g, " ") : "WAITING"}</span>
+        <RaceBadge badge={stats.badge} />
       </div>
       <div className="mt-4 grid gap-2 md:grid-cols-5">
         <MagicCard><div className="k">POSITION</div><div className="mt-1 font-mono text-3xl">P{stats.position}</div></MagicCard>

@@ -104,7 +104,10 @@ export default function EnterRace() {
         <MagicCard>
           <div className="k">Whop</div>
           <h3 className="mt-2 text-2xl font-semibold">Card</h3>
-          <p className="mt-2 text-sm text-neutral-600">Fiat hits the Whop webhook, then an authority can submit log_paid_rp. Checkout URL comes from env, never invented.</p>
+          <p className="mt-2 text-sm text-neutral-600">
+            $1 buys 1 paid RP. Weekly community stipend is 50 RP, off-chain, non-cashable.
+            Fiat goes through Whop; Phantom signs the on-chain receipt.
+          </p>
           {WHOP_CHECKOUT_URL ? (
             <a className="mt-4 inline-block rounded-full bg-forest px-5 py-2 text-sm font-semibold uppercase text-white" href={WHOP_CHECKOUT_URL}>
               Pay with Whop

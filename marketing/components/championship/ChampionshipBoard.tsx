@@ -69,13 +69,6 @@ export default function ChampionshipBoard() {
             ))}
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-4 border-t border-emerald-50 px-5 py-4 text-xs">
-          <span className="k">FORM GUIDE</span>
-          <span className="flex items-center gap-1"><span className="grid h-5 w-5 place-items-center rounded bg-forest text-[10px] text-white">G</span> WIN</span>
-          <span className="flex items-center gap-1"><span className="grid h-5 w-5 place-items-center rounded bg-amber-500 text-[10px] text-white">S</span> PODIUM</span>
-          <span className="flex items-center gap-1"><span className="grid h-5 w-5 place-items-center rounded bg-sky-600 text-[10px] text-white">M</span> MIDFIELD</span>
-          <span className="flex items-center gap-1"><span className="grid h-5 w-5 place-items-center rounded bg-rose-500 text-[10px] text-white">P</span> PAID OUT</span>
-        </div>
       </MagicCard>
 
       <div className="mt-8 flex justify-center">

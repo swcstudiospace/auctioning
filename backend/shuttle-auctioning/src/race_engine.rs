@@ -4,7 +4,7 @@
 //! here writes free RP on-chain or implies cash-out. Persistence is optional
 //! (snapshots + narrative events) so the news layer can consume later.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -540,8 +540,126 @@ pub struct RaceEventRow {
     pub payload: serde_json::Value,
 }
 
+/// Close windows whose clock has run out so the calendar is not a live lie.
+/// Scoring sessions get a final snapshot first so championship can score them.
+pub async fn archive_expired_windows(db: &PgPool, now: DateTime<Utc>) -> Result<u64, sqlx::Error> {
+    let due: Vec<RaceWindowRow> = sqlx::query_as(
+        r#"
+        SELECT id, slug, name, race_type, status, tag, starts_at, ends_at
+        FROM race_windows
+        WHERE status IN ('live', 'scheduled', 'qualifying', 'final_lap')
+          AND ends_at <= $1
+        "#,
+    )
+    .bind(now)
+    .fetch_all(db)
+    .await?;
+
+    for w in &due {
+        if is_scoring_race_type(&w.race_type) {
+            if let Err(e) = persist_snapshot(db, w).await {
+                tracing::warn!(error = %e, slug = %w.slug, "final snapshot before archive failed");
+            }
+        }
+    }
+
+    let res = sqlx::query(
+        r#"
+        UPDATE race_windows
+        SET status = 'archived'
+        WHERE status IN ('live', 'scheduled', 'qualifying', 'final_lap')
+          AND ends_at <= $1
+        "#,
+    )
+    .bind(now)
+    .execute(db)
+    .await?;
+    Ok(res.rows_affected())
+}
+
+pub fn is_scoring_race_type(t: &str) -> bool {
+    matches!(
+        t.to_ascii_uppercase().as_str(),
+        "GRAND_TOUR" | "GRAND_PRIX" | "GREEN_FLAG" | "SPRINT" | "PACE_LAP"
+    )
+}
+
+/// Archived scoring windows with no snapshot still need a finishing board.
+pub async fn backfill_archived_finals(db: &PgPool) -> Result<u64, sqlx::Error> {
+    let rows: Vec<RaceWindowRow> = sqlx::query_as(
+        r#"
+        SELECT id, slug, name, race_type, status, tag, starts_at, ends_at
+        FROM race_windows w
+        WHERE w.status IN ('archived', 'finished')
+          AND w.race_type IN ('GRAND_TOUR','GRAND_PRIX','GREEN_FLAG','SPRINT','PACE_LAP')
+          AND NOT EXISTS (
+            SELECT 1 FROM rank_snapshots s WHERE s.race_window_id = w.id
+          )
+        "#,
+    )
+    .fetch_all(db)
+    .await?;
+    let mut n = 0u64;
+    for w in rows {
+        persist_snapshot(db, &w).await?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+/// Saturday 16:00–17:00 UTC this week, or next Saturday if that hour already ended.
+pub fn saturday_sprint_bounds(now: DateTime<Utc>) -> (DateTime<Utc>, DateTime<Utc>) {
+    let monday = crate::ledger::week_start_of(now);
+    let this_start = monday + Duration::days(5) + Duration::hours(16);
+    let this_end = this_start + Duration::hours(1);
+    if now < this_end {
+        (this_start, this_end)
+    } else {
+        let next = this_start + Duration::weeks(1);
+        (next, next + Duration::hours(1))
+    }
+}
+
+/// Ensure a Green Flag sprint exists on the calendar (scheduled or live).
+pub async fn ensure_default_sprint(db: &PgPool) -> Result<RaceWindowRow, sqlx::Error> {
+    let now = Utc::now();
+    let (start, end) = saturday_sprint_bounds(now);
+    let slug = format!("green-flag-{}", start.format("%Y-%m-%d"));
+    let status = if now < start { "scheduled" } else { "live" };
+
+    sqlx::query(
+        r#"
+        INSERT INTO race_windows (slug, name, race_type, status, starts_at, ends_at, rules)
+        VALUES ($1, $2, 'GREEN_FLAG', $3, $4, $5, '{"photo_finish_gap":5,"velocity_secs":3600}'::jsonb)
+        ON CONFLICT (slug) DO NOTHING
+        "#,
+    )
+    .bind(&slug)
+    .bind(format!("Green Flag {}", start.format("%Y-%m-%d")))
+    .bind(status)
+    .bind(start)
+    .bind(end)
+    .execute(db)
+    .await?;
+
+    sqlx::query_as::<_, RaceWindowRow>(
+        r#"
+        SELECT id, slug, name, race_type, status, tag, starts_at, ends_at
+        FROM race_windows WHERE slug = $1
+        "#,
+    )
+    .bind(&slug)
+    .fetch_one(db)
+    .await
+}
+
 /// Ensure a live weekly Grand Tour exists so the grid is never empty-state.
+/// Also archives expired windows and seeds this week's Saturday Green Flag.
 pub async fn ensure_default_window(db: &PgPool) -> Result<RaceWindowRow, sqlx::Error> {
+    let _ = archive_expired_windows(db, Utc::now()).await?;
+    if let Err(e) = backfill_archived_finals(db).await {
+        tracing::warn!(error = %e, "backfill_archived_finals failed");
+    }
     let week_start = crate::ledger::current_week_start();
     let week_end = crate::ledger::next_week_start(Utc::now());
     let slug = format!("grand-tour-{}", week_start.format("%Y-%m-%d"));
@@ -559,6 +677,10 @@ pub async fn ensure_default_window(db: &PgPool) -> Result<RaceWindowRow, sqlx::E
     .bind(week_end)
     .execute(db)
     .await?;
+
+    if let Err(e) = ensure_default_sprint(db).await {
+        tracing::warn!(error = %e, "ensure_default_sprint failed");
+    }
 
     sqlx::query_as::<_, RaceWindowRow>(
         r#"
@@ -593,6 +715,18 @@ pub async fn window_by_slug(db: &PgPool, slug: &str) -> Result<Option<RaceWindow
         "#,
     )
     .bind(slug)
+    .fetch_optional(db)
+    .await
+}
+
+pub async fn window_by_id(db: &PgPool, id: Uuid) -> Result<Option<RaceWindowRow>, sqlx::Error> {
+    sqlx::query_as::<_, RaceWindowRow>(
+        r#"
+        SELECT id, slug, name, race_type, status, tag, starts_at, ends_at
+        FROM race_windows WHERE id = $1
+        "#,
+    )
+    .bind(id)
     .fetch_optional(db)
     .await
 }
@@ -693,7 +827,7 @@ pub async fn grid_for_window(
 ) -> Result<(Vec<GridSlot>, Vec<DerivedEvent>), sqlx::Error> {
     let now = Utc::now();
     let cfg = config_from_window(window, now);
-    let allocs = load_allocations(db, window.tag.as_deref(), cfg.window_start, now).await?;
+    let allocs = load_allocations(db, window.tag.as_deref(), cfg.window_start, cfg.window_end).await?;
     let prev = load_previous_snapshot(db, window.id).await?;
     let (mut grid, events) = compute_grid(&allocs, &prev, &cfg);
     let lifetime = lifetime_grid(db).await?;
@@ -718,7 +852,7 @@ pub async fn persist_snapshot(
 ) -> Result<(Vec<GridSlot>, Vec<DerivedEvent>), sqlx::Error> {
     let now = Utc::now();
     let cfg = config_from_window(window, now);
-    let allocs = load_allocations(db, window.tag.as_deref(), cfg.window_start, now).await?;
+    let allocs = load_allocations(db, window.tag.as_deref(), cfg.window_start, cfg.window_end).await?;
     let prev = load_previous_snapshot(db, window.id).await?;
     let (grid, events) = compute_grid(&allocs, &prev, &cfg);
 
@@ -774,6 +908,18 @@ pub async fn persist_snapshot(
     }
     tx.commit().await?;
     Ok((grid, events))
+}
+
+/// Same as persist_snapshot, but skip the write when nothing happened.
+pub async fn persist_snapshot_if_events(
+    db: &PgPool,
+    window: &RaceWindowRow,
+) -> Result<(Vec<GridSlot>, Vec<DerivedEvent>), sqlx::Error> {
+    let (_grid, events) = grid_for_window(db, window).await?;
+    if events.is_empty() {
+        return Ok((_grid, events));
+    }
+    persist_snapshot(db, window).await
 }
 
 pub async fn events_for_window(
@@ -1099,5 +1245,35 @@ mod tests {
         assert_eq!(grid.len(), 1);
         assert_eq!(grid[0].rank, 1);
         assert_eq!(grid[0].hover_footer, "Held P1. Gap 0.");
+    }
+
+    #[test]
+    fn saturday_sprint_before_hour_uses_this_week() {
+        // Wednesday 12:00 UTC in a week whose Monday is 2026-08-24.
+        let wed = DateTime::parse_from_rfc3339("2026-08-26T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let (start, end) = saturday_sprint_bounds(wed);
+        assert_eq!(start.to_rfc3339(), "2026-08-29T16:00:00+00:00");
+        assert_eq!(end.to_rfc3339(), "2026-08-29T17:00:00+00:00");
+    }
+
+    #[test]
+    fn saturday_sprint_after_hour_uses_next_week() {
+        let after = DateTime::parse_from_rfc3339("2026-08-29T17:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let (start, end) = saturday_sprint_bounds(after);
+        assert_eq!(start.to_rfc3339(), "2026-09-05T16:00:00+00:00");
+        assert_eq!(end.to_rfc3339(), "2026-09-05T17:00:00+00:00");
+    }
+
+    #[test]
+    fn scoring_types_match_championship_sql() {
+        assert!(is_scoring_race_type("GRAND_TOUR"));
+        assert!(is_scoring_race_type("sprint"));
+        assert!(is_scoring_race_type("Green_Flag"));
+        assert!(!is_scoring_race_type("CHAMPIONSHIP"));
+        assert!(!is_scoring_race_type("TITLE_FIGHT"));
     }
 }

@@ -18,7 +18,14 @@ export type FeaturedRace = {
 
 export type RaceCalendar = {
   windows?: RaceWindow[];
-  active_card?: { title?: string; kind?: string; ends_at?: string } | null;
+  active_card?: {
+    title?: string;
+    name?: string;
+    slug?: string;
+    kind?: string;
+    multiplier_bps?: number;
+    ends_at?: string;
+  } | null;
   featured?: FeaturedRace | null;
 };
 
@@ -61,10 +68,8 @@ export type HoverMetrics = {
 
 const BADGES = new Set(["HOT", "REIGN", "DARK_HORSE", "PHOTO", "COOLING"]);
 
-export function deriveBadge(p: Project, slot?: GridSlot | null, gapToNext?: number | null): string | null {
+export function deriveBadge(_p: Project, slot?: GridSlot | null, _gapToNext?: number | null): string | null {
   if (slot?.badge && BADGES.has(slot.badge)) return slot.badge;
-  if ((p.total_rp || 0) <= 0) return null;
-  if (gapToNext != null && gapToNext >= 0 && gapToNext < 5) return "PHOTO";
   return null;
 }
 
@@ -85,7 +90,7 @@ export function metricsFromProject(
   const community = slot?.community_rp ?? Math.max(0, raceRp - paid);
   const denom = paid + community || raceRp;
   const paidPct = denom ? Math.round((paid / denom) * 100) : 0;
-  const clicks = slot?.clicks ?? 0;
+  const clicks = (slot?.clicks && slot.clicks > 0 ? slot.clicks : null) ?? p.clicks ?? 0;
   const gap = extras?.gapToNext ?? slot?.gap_to_next ?? slot?.gap_to_leader ?? 0;
   const footer =
     slot?.hover_footer ||

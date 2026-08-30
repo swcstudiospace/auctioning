@@ -23,6 +23,8 @@ pub struct Project {
     pub url: Option<String>,
     pub tags: Vec<String>,
     pub total_rp: i64,
+    #[serde(default)]
+    pub clicks: i64,
 }
 
 /// One incoming listing from a board snapshot / import payload.
@@ -352,7 +354,7 @@ pub async fn submit_site(db: &PgPool, req: SubmitSite) -> Result<SubmitOutcome, 
     let existing: Option<Project> = sqlx::query_as::<_, Project>(
         r#"
         SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
-               stable_id, url, tags, total_rp
+               stable_id, url, tags, total_rp, clicks
         FROM projects
         WHERE handle = $1
            OR stable_id = $2
@@ -439,7 +441,7 @@ pub async fn submit_site(db: &PgPool, req: SubmitSite) -> Result<SubmitOutcome, 
     let project = sqlx::query_as::<_, Project>(
         r#"
         SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
-               stable_id, url, tags, total_rp
+               stable_id, url, tags, total_rp, clicks
         FROM projects WHERE handle = $1
         "#,
     )
@@ -467,6 +469,8 @@ pub struct ProjectWithRank {
     pub tags: Vec<String>,
     pub total_rp: i64,
     pub rank: i64,
+    #[serde(default)]
+    pub clicks: i64,
 }
 
 /// Ranked board: highest total_rp first, ties broken by earliest creation.
@@ -541,7 +545,7 @@ async fn list_projects_page_inner(
     let projects = sqlx::query_as::<_, ProjectWithRank>(
         r#"
         SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
-               stable_id, url, tags, total_rp, rank
+               stable_id, url, tags, total_rp, rank, clicks
         FROM (
             SELECT p.*,
                    row_number() OVER (ORDER BY p.total_rp DESC, p.created_at ASC, p.handle ASC) AS rank
@@ -595,13 +599,24 @@ pub async fn get_project(db: &PgPool, handle: &str) -> Result<Option<Project>, s
     sqlx::query_as::<_, Project>(
         r#"
         SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
-               stable_id, url, tags, total_rp
+               stable_id, url, tags, total_rp, clicks
         FROM projects WHERE handle = $1
         "#,
     )
     .bind(handle)
     .fetch_optional(db)
     .await
+}
+
+/// First-party outbound click. Returns the new count, or None if unknown handle.
+pub async fn record_click(db: &PgPool, handle: &str) -> Result<Option<i64>, sqlx::Error> {
+    let row: Option<(i64,)> = sqlx::query_as(
+        "UPDATE projects SET clicks = clicks + 1 WHERE handle = $1 RETURNING clicks",
+    )
+    .bind(handle)
+    .fetch_optional(db)
+    .await?;
+    Ok(row.map(|r| r.0))
 }
 
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]

@@ -6,9 +6,8 @@ import { MagicCard } from "@/components/magic/MagicCard";
 import { ShinyButton } from "@/components/magic/ShinyButton";
 import { BlurFade } from "@/components/magic/BlurFade";
 import { BorderBeam } from "@/components/magic/BorderBeam";
-import { fetchContent, fetchTape, fetchWindows, type ContentItem } from "@/lib/race";
-import type { RaceEvent } from "@/lib/api";
-import { getJson } from "@/lib/api";
+import { fetchContent, type ContentItem } from "@/lib/race";
+import { narrativeQueue } from "@/lib/api";
 import { allPosts } from "@/lib/blog";
 
 type Recap = {
@@ -27,36 +26,17 @@ export default function NewsFeed() {
 
   useEffect(() => {
     (async () => {
-      const windows = await fetchWindows();
-      const items: Recap[] = [];
-      for (const w of windows.slice(0, 6)) {
-        if (!w.slug) continue;
-        const tape = await fetchTape(w.slug);
-        for (const p of tape) {
-          items.push({
-            id: p.event_id || `${w.slug}-${items.length}`,
-            kind: (p.channel || "recap").toUpperCase(),
-            body: p.body,
-            source: p.source || "template",
-          });
-        }
-        if (!tape.length) {
-          const ev = await getJson<{ events?: RaceEvent[] }>(
-            `/v1/races/windows/${encodeURIComponent(w.slug)}/events`,
-          );
-          for (const e of ev?.events || []) {
-            const body = e.body || e.summary || e.title || "";
-            if (!body) continue;
-            items.push({
-              id: `${w.slug}-${body}`,
-              kind: (e.kind || e.event_type || "event").toUpperCase(),
-              body,
-              source: "ledger",
-            });
-          }
-        }
-      }
-      const content = await fetchContent();
+      const [approved, published, content] = await Promise.all([
+        narrativeQueue("approved"),
+        narrativeQueue("published"),
+        fetchContent(),
+      ]);
+      const items: Recap[] = [...published, ...approved].map((p) => ({
+        id: p.id,
+        kind: (p.channel || "recap").toUpperCase(),
+        body: p.body,
+        source: p.publish_status,
+      }));
       setRecaps(items);
       setHouse(content);
       setLoaded(true);
@@ -71,7 +51,10 @@ export default function NewsFeed() {
           News from the grid.
         </h1>
         <p className="mt-4 max-w-2xl text-neutral-600">
-          Posts from the house. Recaps from the ledger. Nothing invented.
+          Posts from the house. Recaps from the ledger. Nothing invented.{" "}
+          <Link href="/desk" className="text-forest">
+            Operator desk
+          </Link>
         </p>
       </BlurFade>
 
@@ -130,7 +113,11 @@ export default function NewsFeed() {
       ) : recaps.length === 0 ? (
         <MagicCard className="mt-3">
           <p className="text-sm text-neutral-600">
-            No ledger recaps yet. First overtake, photo finish, or archived sprint becomes the first story.
+            No approved recaps yet. Race events mint drafts; they land here after the{" "}
+            <Link href="/desk" className="text-forest">
+              operator desk
+            </Link>{" "}
+            approves them.
           </p>
         </MagicCard>
       ) : (

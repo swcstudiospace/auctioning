@@ -15,7 +15,7 @@ const features = [
   { k: "PUBLIC", h: "Rank is the scoreboard", p: "The catalog is open. You do not log in to see who is #1." },
   { k: "50 RP", h: "Weekly community fuel", p: "Connect Phantom. Claim 50 RP every week. Vote. It is not money and it does not cash out." },
   { k: "PAID", h: "$1 = 1 RP on-chain", p: "Paid fuel is logged through Phantom. Community RP stays in Postgres." },
-  { k: "GRID", h: "2,089 companies at 0", p: "Seeded from outbid.lol. Nobody inherited rank. First fuel writes the first position." },
+  { k: "GRID", h: "The catalog starts at 0", p: "Seeded from outbid.lol. Nobody inherited rank. First fuel writes the first position." },
   { k: "GARAGE", h: "Hover is the briefing", p: "Ten metrics on hover. The company page is telemetry, not a top-level tab." },
   { k: "POINTS", h: "Championship is points", p: "GP P1–P10, sprint P1–P3, fastest pace +1. Empty until a window archives." },
   { k: "LIVE", h: "One race at a time", p: "Calendar rail for sprint, GP, and whoever is actually leading." },
@@ -24,11 +24,11 @@ const features = [
 
 const surfaces = [
   { href: "/rank", k: "RANK", h: "The catalog", p: "Search, page, hover, fuel." },
-  { href: "/tracks", k: "TRACK", h: "Form board", p: "G/S/M/P when races exist." },
+  { href: "/tracks", k: "TRACK", h: "Sector scrap", p: "One tag, one board. Wins from archived sprints." },
   { href: "/live", k: "LIVE", h: "F1 weekend", p: "Sprint, Grand Prix, championship rail. One grid." },
   { href: "/championship", k: "CHAMPIONSHIP", h: "Points table", p: "Not catalog RP." },
-  { href: "/news", k: "NEWS", h: "The house blog", p: "Launch post is up." },
-  { href: "/rules", k: "RULES", h: "House playbook", p: "Fuel, grid, payout." },
+  { href: "/news", k: "NEWS", h: "The house blog", p: "Launch post is up. Recaps wait on the desk." },
+  { href: "/rules", k: "RULES", h: "House playbook", p: "$1 = 1. Weekly 50. Pace is extra." },
   { href: "/rank#add", k: "ADD", h: "List your site", p: "URL in. 0 RP. Fuel to climb." },
 ];
 
@@ -46,7 +46,7 @@ const faqs = [
     a: "No. Paid RP is $1 = 1 RP, signed on-chain. Community RP is a weekly allocation. Different ledgers.",
   },
   {
-    q: "Why are there 2,089 companies already?",
+    q: "Why is the catalog already full?",
     a: "The first grid is the outbid.lol catalog, imported at 0 RP. The names are real. The rank is not seeded.",
   },
   {
@@ -59,18 +59,18 @@ const faqs = [
   },
 ];
 
-const tape = [
-  "RP is fuel",
-  "News is the product",
-  "Rank is the scoreboard",
-  "50 RP / week",
-  "Phantom",
-  "Solana",
-  "2,089 companies",
-  "0 inherited RP",
-];
-
-export default function Landing() {
+export default function Landing({ catalogTotal = 0 }: { catalogTotal?: number }) {
+  const n = catalogTotal > 0 ? catalogTotal : 0;
+  const tape = [
+    "RP is fuel",
+    "News is the product",
+    "Rank is the scoreboard",
+    "50 RP / week",
+    "Phantom",
+    "Solana",
+    n ? `${n.toLocaleString()} companies` : "Open catalog",
+    "0 inherited RP",
+  ];
   return (
     <div className="bg-[#0a0a0a] text-[#EDEAE2]">
       <Spotlight className="overflow-hidden">
@@ -90,7 +90,12 @@ export default function Landing() {
             </h1>
             <p className="mt-6 max-w-xl text-base text-white/60 md:text-lg">
               Business racing. RP is fuel. Rank is the scoreboard. News is the product.{" "}
-              <NumberTicker value={2089} /> companies. Zero inherited RP. 50 RP every week to vote.
+              {n ? (
+                <>
+                  <NumberTicker value={n} /> companies.{" "}
+                </>
+              ) : null}
+              Zero inherited RP. 50 RP every week to vote.
             </p>
           </BlurFade>
           <BlurFade delay={0.12}>
