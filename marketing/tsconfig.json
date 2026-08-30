@@ -35,6 +35,12 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "components/home",
+    "components/magicui",
+    "components/enter/enter-form.tsx",
+    "components/garage/garage-view.tsx",
+    "components/tracks/leaderboard.tsx",
+    "components/chrome/back-link.tsx"
   ]
 }
