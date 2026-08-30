@@ -229,6 +229,231 @@ pub fn parse_import_payload(json: &str) -> Result<Vec<ImportProject>, serde_json
     serde_json::from_str(json)
 }
 
+/// Public listing: one URL, starts at 0 RP. Never overwrites an existing row
+/// (outbid import or a prior submit). Returns the existing project instead.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct SubmitSite {
+    pub url: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub blurb: Option<String>,
+    #[serde(default)]
+    pub owner_wallet: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct SubmitOutcome {
+    pub created: bool,
+    pub project: Project,
+}
+
+fn parse_site_url(raw: &str) -> Result<(String, String), String> {
+    let s = raw.trim();
+    if s.is_empty() || s.len() > 2048 {
+        return Err("url must be 1-2048 chars".into());
+    }
+    if s.contains(char::is_whitespace) {
+        return Err("url must not contain spaces".into());
+    }
+    let with_scheme = if s.contains("://") {
+        s.to_string()
+    } else {
+        format!("https://{s}")
+    };
+    let lower = with_scheme.to_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return Err("url must be http or https".into());
+    }
+    let rest = lower.split("://").nth(1).unwrap_or("");
+    let hostport = rest
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .split('?')
+        .next()
+        .unwrap_or("");
+    if hostport.contains('@') {
+        return Err("url must not include credentials".into());
+    }
+    let host_only = hostport
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim_matches('.');
+    let host = host_only.strip_prefix("www.").unwrap_or(host_only);
+    if host.is_empty() || !host.contains('.') || host.len() > 253 {
+        return Err("url host looks invalid".into());
+    }
+    if !host
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    {
+        return Err("url host looks invalid".into());
+    }
+    if host == "localhost"
+        || host.ends_with(".local")
+        || host.ends_with(".internal")
+        || host.starts_with("127.")
+        || host.starts_with("10.")
+        || host.starts_with("192.168.")
+        || host.starts_with("169.254.")
+    {
+        return Err("that host cannot be ranked".into());
+    }
+    if host.chars().all(|c| c.is_ascii_digit() || c == '.') {
+        return Err("ip addresses cannot be ranked".into());
+    }
+    Ok((format!("https://{host}/"), host.to_string()))
+}
+
+pub async fn submit_site(db: &PgPool, req: SubmitSite) -> Result<SubmitOutcome, sqlx::Error> {
+    let (canonical, host) = parse_site_url(&req.url)
+        .map_err(|e| sqlx::Error::Configuration(e.into()))?;
+
+    let item = ImportProject {
+        stable_id: format!("manual:{host}"),
+        handle: Some(host.replace('.', "-")),
+        display_name: req
+            .display_name
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| Some(host.clone())),
+        url: Some(canonical.clone()),
+        blurb: req
+            .blurb
+            .as_ref()
+            .map(|s| s.trim().chars().take(280).collect::<String>())
+            .filter(|s| !s.is_empty()),
+        tags: req.tags,
+        source: Some("manual".into()),
+        source_ref: Some(canonical.clone()),
+        owner_wallet: req
+            .owner_wallet
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+    };
+    if let Some(w) = &item.owner_wallet {
+        if !valid_wallet(w) {
+            return Err(WalletError::Invalid.into());
+        }
+    }
+
+    let mut handle = item.derived_handle();
+    let tags = clean_tags(&item.tags);
+    let outbid_id = format!("outbid:{host}");
+
+    let mut tx = db.begin().await?;
+
+    let existing: Option<Project> = sqlx::query_as::<_, Project>(
+        r#"
+        SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
+               stable_id, url, tags, total_rp
+        FROM projects
+        WHERE handle = $1
+           OR stable_id = $2
+           OR stable_id = $3
+           OR lower(trim(trailing '/' from coalesce(url, '')))
+              = lower(trim(trailing '/' from $4::text))
+        LIMIT 1
+        "#,
+    )
+    .bind(&handle)
+    .bind(&item.stable_id)
+    .bind(&outbid_id)
+    .bind(&canonical)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    if let Some(project) = existing {
+        let existing_host = project
+            .url
+            .as_deref()
+            .and_then(|u| parse_site_url(u).ok().map(|(_, h)| h));
+        let same_host = existing_host.as_deref() == Some(host.as_str())
+            || project.stable_id.as_deref() == Some(item.stable_id.as_str())
+            || project.stable_id.as_deref() == Some(outbid_id.as_str());
+        if same_host {
+            tx.commit().await?;
+            return Ok(SubmitOutcome {
+                created: false,
+                project,
+            });
+        }
+        let mut n = 2u32;
+        loop {
+            let mut base = handle.clone();
+            if base.len() > 30 {
+                base.truncate(30);
+            }
+            let candidate = format!("{base}-{n}");
+            let taken: Option<(String,)> =
+                sqlx::query_as("SELECT handle FROM projects WHERE handle = $1")
+                    .bind(&candidate)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            if taken.is_none() {
+                handle = candidate;
+                break;
+            }
+            n += 1;
+            if n > 50 {
+                return Err(sqlx::Error::Configuration(
+                    "could not allocate handle".into(),
+                ));
+            }
+        }
+    }
+
+    if let Some(w) = &item.owner_wallet {
+        sqlx::query("INSERT INTO wallets (wallet) VALUES ($1) ON CONFLICT DO NOTHING")
+            .bind(w)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO projects
+            (handle, owner_wallet, source, source_ref, display_name, blurb,
+             stable_id, url, tags, total_rp)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0)
+        "#,
+    )
+    .bind(&handle)
+    .bind(&item.owner_wallet)
+    .bind("manual")
+    .bind(&item.source_ref)
+    .bind(&item.display_name)
+    .bind(&item.blurb)
+    .bind(&item.stable_id)
+    .bind(&canonical)
+    .bind(&tags)
+    .execute(&mut *tx)
+    .await?;
+
+    let project = sqlx::query_as::<_, Project>(
+        r#"
+        SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
+               stable_id, url, tags, total_rp
+        FROM projects WHERE handle = $1
+        "#,
+    )
+    .bind(&handle)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(SubmitOutcome {
+        created: true,
+        project,
+    })
+}
+
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct ProjectWithRank {
     pub handle: String,

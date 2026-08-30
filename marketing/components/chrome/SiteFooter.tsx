@@ -4,7 +4,7 @@ import { brand } from "@/lib/brand";
 const WHOP = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_URL || "";
 
 const links = [
-  { href: "/", label: "RANK" },
+  { href: "/rank", label: "RANK" },
   { href: "/tracks", label: "TRACK BOARD" },
   { href: "/championship", label: "CHAMPIONSHIP" },
   { href: "/rules", label: "RACE RULES" },
@@ -24,9 +24,7 @@ export default function SiteFooter() {
             {links.map((l) => (
               <Link key={l.href} href={l.href}>{l.label}</Link>
             ))}
-            {WHOP ? (
-              <a href={WHOP}>WHOP</a>
-            ) : null}
+            {WHOP ? <a href={WHOP}>WHOP</a> : null}
           </div>
         </div>
         <div className="flex flex-wrap justify-between gap-2 text-xs text-neutral-500">

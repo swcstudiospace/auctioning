@@ -3,18 +3,25 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  API_BASE,
   WHOP_CHECKOUT_URL,
   amountToClaimFirst,
   claimWeekly,
+  getJson,
   getRp,
   listProjects,
   predictRank,
   supportProject,
+  type GridSlot,
   type Project,
   type ProjectList,
   type RpView,
 } from "@/lib/api";
+import CompanyIcon from "@/components/chrome/CompanyIcon";
+import GarageCard, { statsFromProject } from "@/components/garage/GarageCard";
+import AddSite from "@/components/board/AddSite";
+import { deriveBadge, gapToNextOnPage } from "@/lib/race";
+import { BlurFade } from "@/components/magic/BlurFade";
+import { NumberTicker } from "@/components/magic/NumberTicker";
 
 type PhantomProvider = {
   isPhantom?: boolean;
@@ -30,11 +37,6 @@ function phantom(): PhantomProvider | null {
   };
   if (w.solana?.isPhantom) return w.solana;
   return w.phantom?.solana ?? null;
-}
-
-function initialOf(p: Project): string {
-  const name = (p.display_name || p.handle || "?").trim();
-  return name.charAt(0).toUpperCase();
 }
 
 function hostOf(url: string | null): string {
@@ -81,6 +83,8 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
   const [walletMsg, setWalletMsg] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<Project | null>(null);
+  const [gridByHandle, setGridByHandle] = useState<Record<string, GridSlot>>({});
+  const [hoverHandle, setHoverHandle] = useState<string | null>(null);
   const [amount, setAmount] = useState(1);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -104,12 +108,6 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    if (!API_BASE) {
-      setProjects([]);
-      setError("The catalog API URL is not configured.");
-      setLoading(false);
-      return;
-    }
     const res = await listProjects({ page, per_page: 50, tag: tag || undefined, q: qParam || undefined });
     if (!res.ok) {
       setProjects([]);
@@ -125,6 +123,19 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
   }, [page, tag, qParam]);
 
   useEffect(() => {
+    let cancel = false;
+    getJson<{ grid: GridSlot[] }>("/v1/grid").then((res) => {
+      if (cancel || !res?.grid) return;
+      const map: Record<string, GridSlot> = {};
+      for (const slot of res.grid) map[slot.handle] = slot;
+      setGridByHandle(map);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  useEffect(() => {
     setQInput(qParam);
   }, [qParam]);
 
@@ -135,7 +146,6 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
   useEffect(() => {
     let cancel = false;
     async function pullLeader() {
-      if (!API_BASE) return;
       const res = await listProjects({ page: 1, per_page: 1, tag: tag || undefined, q: qParam || undefined });
       if (cancel || !res.ok) return;
       setLeaderRp(res.data.projects[0]?.total_rp ?? 0);
@@ -274,9 +284,9 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className={`mx-auto max-w-6xl px-6 py-10 ${hoverHandle ? "pb-72 lg:pb-10" : ""}`}>
       <section id="claim" className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-        <div>
+        <BlurFade>
           <p className="k text-forest">Play to rank</p>
           <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">
             Company leaderboard
@@ -284,7 +294,7 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
           <p className="mt-3 max-w-xl text-neutral-600">
             Fuel a listing with RP to climb the board. Rank is earned, never bought in dollars.
           </p>
-        </div>
+        </BlurFade>
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -319,6 +329,8 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
       {walletMsg ? <p className="mt-2 text-sm text-red-700">{walletMsg}</p> : null}
       {flash ? <p className="mt-2 text-sm text-forest">{flash}</p> : null}
 
+      <AddSite />
+
       <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center">
         <input
           value={qInput}
@@ -327,7 +339,13 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
           className="w-full rounded-full border border-emerald-100 bg-white px-4 py-2.5 text-sm outline-none ring-forest/30 focus:ring-2 md:max-w-sm"
         />
         <p className="text-xs uppercase tracking-[0.16em] text-neutral-500">
-          {loading ? "Loading…" : `${total.toLocaleString("en-US")} companies · 50 / page`}
+          {loading ? (
+            "Loading…"
+          ) : (
+            <>
+              <NumberTicker value={total} /> companies · 50 / page
+            </>
+          )}
         </p>
       </div>
 
@@ -369,51 +387,78 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
       ) : null}
 
       {!error && projects.length > 0 ? (
-        <ol className="mt-8 divide-y divide-emerald-100 overflow-hidden rounded-2xl border border-emerald-100 bg-white">
-          {projects.map((p) => {
-            const active = selected?.handle === p.handle;
-            return (
-              <li
-                key={p.handle}
-                className={`grid grid-cols-[auto_1fr_auto] items-center gap-4 px-4 py-4 md:grid-cols-[4rem_3rem_1fr_auto] ${active ? "bg-emerald-50/70" : ""}`}
-              >
-                <span className="w-10 text-right text-sm font-semibold text-neutral-500">#{p.rank}</span>
-                <span className="hidden h-10 w-10 place-items-center rounded-full bg-forest text-sm font-bold text-white md:grid">
-                  {initialOf(p)}
-                </span>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="font-semibold">{p.display_name || p.handle}</span>
-                    {p.tags[0] ? <span className="chip">{tagLabel(p.tags[0])}</span> : null}
-                    {p.url ? (
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="truncate text-xs text-forest"
-                      >
-                        {hostOf(p.url)}
-                      </a>
+        <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
+          <ol className="divide-y divide-emerald-100 rounded-2xl border border-emerald-100 bg-white">
+            {projects.map((p, i) => {
+              const active = selected?.handle === p.handle || hoverHandle === p.handle;
+              const gap = gapToNextOnPage(projects, i);
+              const badge = deriveBadge(p, gridByHandle[p.handle] || null, gap);
+              return (
+                <li
+                  key={p.handle}
+                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-4 px-4 py-4 md:grid-cols-[4rem_3rem_1fr_auto] ${active ? "bg-emerald-50/70" : ""}`}
+                  onMouseEnter={() => setHoverHandle(p.handle)}
+                  onFocus={() => setHoverHandle(p.handle)}
+                >
+                  <span className="w-10 text-right text-sm font-semibold text-neutral-500">#{p.rank}</span>
+                  <CompanyIcon url={p.url} name={p.display_name || p.handle} size={40} />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="font-semibold">{p.display_name || p.handle}</span>
+                      {p.tags[0] ? <span className="chip">{tagLabel(p.tags[0])}</span> : null}
+                      {badge ? <span className="chip">{badge.replace(/_/g, " ")}</span> : null}
+                      {p.url ? (
+                        <a
+                          href={p.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="truncate text-xs text-forest"
+                        >
+                          {hostOf(p.url)}
+                        </a>
+                      ) : null}
+                    </div>
+                    {p.blurb ? (
+                      <p className="mt-1 line-clamp-2 text-sm text-neutral-600">{p.blurb}</p>
                     ) : null}
                   </div>
-                  {p.blurb ? (
-                    <p className="mt-1 line-clamp-2 text-sm text-neutral-600">{p.blurb}</p>
-                  ) : null}
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <span className="text-sm font-semibold text-forest">{fmtRp(p.total_rp)}</span>
-                  <button
-                    type="button"
-                    onClick={() => openSupport(p)}
-                    className="rounded-full border border-forest px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-forest"
-                  >
-                    Support
-                  </button>
-                </div>
-              </li>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="text-sm font-semibold text-forest">{fmtRp(p.total_rp)}</span>
+                    <span className="font-mono text-[11px] text-neutral-400">GAP {gap}</span>
+                    <button
+                      type="button"
+                      onClick={() => openSupport(p)}
+                      className="rounded-full border border-forest px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-forest"
+                    >
+                      Support
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+          {(() => {
+            const brief =
+              projects.find((p) => p.handle === hoverHandle) || projects[0];
+            const gap = gapToNextOnPage(
+              projects,
+              Math.max(0, projects.findIndex((p) => p.handle === brief.handle)),
             );
-          })}
-        </ol>
+            return (
+              <>
+                <aside className="hidden lg:sticky lg:top-24 lg:block">
+                  <p className="k mb-2 text-forest">Briefing</p>
+                  <GarageCard compact stats={statsFromProject(brief, gridByHandle[brief.handle] || null, gap)} />
+                </aside>
+                {hoverHandle ? (
+                  <div className="fixed inset-x-4 bottom-4 z-40 lg:hidden">
+                    <GarageCard compact stats={statsFromProject(brief, gridByHandle[brief.handle] || null, gap)} />
+                  </div>
+                ) : null}
+              </>
+            );
+          })()}
+        </div>
       ) : null}
 
       {selected ? (

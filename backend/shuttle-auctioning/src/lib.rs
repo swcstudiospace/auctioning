@@ -99,7 +99,7 @@ async fn main(
         .route("/v1/rp/claim-weekly", post(handlers::claim_weekly))
         .route("/v1/content", get(handlers::list_content))
         .route("/v1/content/read", post(handlers::content_read))
-        .route("/v1/projects", get(handlers::list_projects))
+        .route("/v1/projects", get(handlers::list_projects).post(handlers::submit_project))
         .route("/v1/projects/import", post(handlers::import_projects))
         .route("/v1/projects/{handle}", get(handlers::get_project))
         .route(

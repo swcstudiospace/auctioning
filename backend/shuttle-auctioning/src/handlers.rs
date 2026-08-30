@@ -377,6 +377,46 @@ pub async fn import_projects(
     Ok(Json(json!({ "imported": imported, "updated": updated })))
 }
 
+#[derive(Deserialize)]
+pub struct SubmitProjectRequest {
+    pub url: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub blurb: Option<String>,
+    #[serde(default)]
+    pub owner_wallet: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+/// Public: list a website onto the catalog at 0 RP. No ingest secret.
+/// Duplicate URL/host returns the existing row with created=false.
+pub async fn submit_project(
+    State(state): State<crate::AppState>,
+    Json(req): Json<SubmitProjectRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let outcome = catalog::submit_site(
+        &state.db,
+        catalog::SubmitSite {
+            url: req.url,
+            display_name: req.display_name,
+            blurb: req.blurb,
+            owner_wallet: req.owner_wallet,
+            tags: req.tags,
+        },
+    )
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Configuration(msg) => AppError::BadRequest(msg.to_string()),
+        other => AppError::from(other),
+    })?;
+    Ok(Json(json!({
+        "created": outcome.created,
+        "project": outcome.project,
+    })))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ListProjectsQuery {
     pub page: Option<i64>,

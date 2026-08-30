@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { brand } from "@/lib/brand";
-import SiteNav from "@/components/chrome/SiteNav";
-import SiteFooter from "@/components/chrome/SiteFooter";
+import Chrome from "@/components/chrome/Chrome";
 
 const ibm = IBM_Plex_Mono({
   subsets: ["latin"],
@@ -21,9 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={`${ibm.variable} ${ibm.className} min-h-screen bg-mint`}>
-        <SiteNav />
-        {children}
-        <SiteFooter />
+        <Chrome>{children}</Chrome>
       </body>
     </html>
   );

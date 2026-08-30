@@ -1,4 +1,20 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+function trimBase(raw: string | undefined): string {
+  return (raw || "").trim().replace(/\/$/, "");
+}
+
+/**
+ * Browser: NEXT_PUBLIC_API_URL, or same-origin (Next rewrites /v1 → API).
+ * Server: AUCTIONING_INTERNAL_API_URL, then public URL, then local runner.
+ */
+export function resolveApiBase(): string {
+  const pub = trimBase(process.env.NEXT_PUBLIC_API_URL);
+  if (typeof window === "undefined") {
+    return trimBase(process.env.AUCTIONING_INTERNAL_API_URL) || pub || "http://127.0.0.1:8000";
+  }
+  return pub;
+}
+
+export const API_BASE = resolveApiBase();
 export const WHOP_CHECKOUT_URL = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_URL || "";
 
 export type GridSlot = {
@@ -19,20 +35,27 @@ export type GridSlot = {
 
 export type RaceWindow = {
   slug: string;
+  name?: string;
   kind?: string;
+  race_type?: string;
   status?: string;
   starts_at?: string;
   ends_at?: string;
   remaining_secs?: number;
+  tag?: string;
 };
 
 export type RaceEvent = {
   kind?: string;
+  event_type?: string;
+  title?: string;
+  summary?: string;
   body?: string;
   created_at?: string;
   attacker?: string;
   victim?: string;
   handle?: string;
+  project_handle?: string;
 };
 
 export type Project = {
@@ -76,9 +99,8 @@ export type ApiResult<T> =
   | { ok: false; status: number; error: string };
 
 export async function getJson<T>(path: string): Promise<T | null> {
-  if (!API_BASE) return null;
   try {
-    const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+    const res = await fetch(`${resolveApiBase()}${path}`, { cache: "no-store" });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -96,9 +118,8 @@ export async function postJson<T>(path: string, body: unknown): Promise<T | null
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
-  if (!API_BASE) return { ok: false, status: 0, error: "API URL is not configured" };
   try {
-    const res = await fetch(`${API_BASE}${path}`, { cache: "no-store", ...init });
+    const res = await fetch(`${resolveApiBase()}${path}`, { cache: "no-store", ...init });
     const text = await res.text();
     let parsed: unknown = null;
     if (text) {
@@ -109,11 +130,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<Api
       }
     }
     if (!res.ok) {
-      const errObj = parsed as { error?: string } | null;
+      const errObj = parsed as { error?: string; message?: string } | null;
       return {
         ok: false,
         status: res.status,
-        error: errObj?.error || res.statusText || "request failed",
+        error: errObj?.message || errObj?.error || res.statusText || "request failed",
       };
     }
     return { ok: true, data: parsed as T };
@@ -134,6 +155,20 @@ export async function listProjects(params: {
   if (params.tag) qs.set("tag", params.tag);
   if (params.q) qs.set("q", params.q);
   return apiFetch<ProjectList>(`/v1/projects?${qs.toString()}`);
+}
+
+
+export async function submitProject(body: {
+  url: string;
+  display_name?: string;
+  blurb?: string;
+  owner_wallet?: string;
+}): Promise<ApiResult<{ created: boolean; project: Project }>> {
+  return apiFetch("/v1/projects", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export async function getRp(wallet: string): Promise<ApiResult<RpView>> {

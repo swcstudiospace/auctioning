@@ -6,7 +6,7 @@ import { rules } from "@/lib/data";
 export default function RulesPage() {
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
-      <Link href="/garage" className="chip">← Back to garage</Link>
+      <Link href="/rank" className="chip">← Back to rank</Link>
       <p className="mt-6 k text-forest">HOUSE PLAYBOOK</p>
       <h1 className="mt-2 text-4xl font-bold">Race Rules</h1>
       <p className="mt-3 max-w-2xl text-neutral-600">
@@ -16,7 +16,7 @@ export default function RulesPage() {
       <div className="mt-3 grid gap-4 md:grid-cols-4">
         {[
           ["FUEL", "Racing Points buy grid time."],
-          ["GRID", "Six slots P1-P6, settled by highest standing bid."],
+          ["GRID", "Six slots P1–P6, settled by highest standing bid."],
           ["SPEED", "Overtakes settle every 60 seconds."],
           ["FEATURED", "Every race lands on the front page."],
         ].map(([k, p]) => (
@@ -26,7 +26,7 @@ export default function RulesPage() {
           </MagicCard>
         ))}
       </div>
-      <p className="k mt-10">HOUSE RULES 01-06</p>
+      <p className="k mt-10">HOUSE RULES 01–06</p>
       <div className="mt-3 grid gap-4 md:grid-cols-3">
         {rules.map((r) => (
           <MagicCard key={r.n} className="flex gap-4">
@@ -42,7 +42,7 @@ export default function RulesPage() {
         </p>
       </MagicCard>
       <div className="mt-8 flex justify-center">
-        <ShinyButton href="/news">See case studies</ShinyButton>
+        <ShinyButton href="/news/launching-auctioning-lol">Read the launch</ShinyButton>
       </div>
     </main>
   );
