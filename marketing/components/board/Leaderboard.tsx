@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   WHOP_CHECKOUT_URL,
@@ -9,8 +9,6 @@ import {
   getJson,
   getRp,
   listProjects,
-  predictRank,
-  supportProject,
   type GridSlot,
   type Project,
   type ProjectList,
@@ -19,6 +17,7 @@ import {
 import CompanyIcon from "@/components/chrome/CompanyIcon";
 import { RaceBadge } from "@/components/chrome/RaceBadge";
 import GarageCard, { statsFromProject } from "@/components/garage/GarageCard";
+import SupportForm from "@/components/board/SupportForm";
 import AddSite from "@/components/board/AddSite";
 import { deriveBadge, gapToNextOnPage } from "@/lib/race";
 import { BlurFade } from "@/components/magic/BlurFade";
@@ -82,9 +81,6 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => setHoverHandle(handle), 250);
   }, []);
-  const [amount, setAmount] = useState(1);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
   const setQuery = useCallback(
@@ -141,6 +137,18 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
   }, [load]);
 
   useEffect(() => {
+    if (!qParam || !projects.length) return;
+    const q = qParam.toLowerCase();
+    const hit = projects.find(
+      (p) =>
+        p.handle === qParam ||
+        p.handle.toLowerCase().includes(q) ||
+        (p.display_name || "").toLowerCase().includes(q),
+    );
+    if (hit) setSelected(hit);
+  }, [projects, qParam]);
+
+  useEffect(() => {
     let cancel = false;
     async function pullLeader() {
       const res = await listProjects({ page: 1, per_page: 1, tag: tag || undefined, q: qParam || undefined });
@@ -162,11 +170,6 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
 
   const claimCost = amountToClaimFirst(leaderRp, 0);
   const pages = Math.max(1, Math.ceil(total / perPage));
-
-  const predicted = useMemo(() => {
-    if (!selected) return null;
-    return predictRank(projects, selected.handle, selected.total_rp + Math.max(0, amount));
-  }, [selected, projects, amount]);
 
   async function refreshRp(addr: string) {
     const res = await getRp(addr);
@@ -221,54 +224,11 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
     return view;
   }
 
-  async function openSupport(project: Project, preferClaim = false) {
+  async function openSupport(project: Project) {
     setSelected(project);
     setFlash(null);
-    const defaultAmt = preferClaim
-      ? amountToClaimFirst(leaderRp, project.total_rp)
-      : Math.max(1, amountToClaimFirst(leaderRp, project.total_rp));
-    setAmount(defaultAmt);
     const addr = wallet || (await connectWallet());
     if (addr) await ensureBalance(addr);
-  }
-
-  async function onSupport(e: FormEvent) {
-    e.preventDefault();
-    if (!selected) return;
-    setBusy(true);
-    setFlash(null);
-    setWalletMsg(null);
-    try {
-      const addr = wallet || (await connectWallet());
-      if (!addr) return;
-      const view = await ensureBalance(addr);
-      const available = (view?.free_rp ?? 0) + (view?.paid_rp ?? 0);
-      if (available < amount) {
-        setWalletMsg(`Need ${fmtRp(amount)}; wallet has ${fmtRp(available)}.`);
-        return;
-      }
-      const res = await supportProject(selected.handle, {
-        wallet: addr,
-        amount,
-        reason: reason.trim() || undefined,
-      });
-      if (!res.ok) {
-        setWalletMsg(
-          res.error === "insufficient_funds"
-            ? "Not enough RP. Claim weekly or add more, then retry."
-            : res.error,
-        );
-        return;
-      }
-      setFlash(
-        `Supported ${selected.display_name || selected.handle} with ${fmtRp(amount)}. New total ${fmtRp(res.data.project_total_rp)}.`,
-      );
-      setSelected({ ...selected, total_rp: res.data.project_total_rp });
-      await refreshRp(addr);
-      await load();
-    } finally {
-      setBusy(false);
-    }
   }
 
   function onClaimCta() {
@@ -277,7 +237,7 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
       setWalletMsg("Board is empty — nothing to claim.");
       return;
     }
-    openSupport(target, true);
+    openSupport(target);
   }
 
   return (
@@ -399,7 +359,7 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
                   onClick={() => openSupport(p)}
                 >
                   <span className="w-10 text-right text-sm font-semibold text-neutral-500">#{p.rank}</span>
-                  <CompanyIcon url={p.url} name={p.display_name || p.handle} size={36} />
+                  <CompanyIcon url={p.url} name={p.display_name || p.handle} handle={p.handle} size={36} />
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="truncate font-semibold">{p.display_name || p.handle}</span>
                     <RaceBadge badge={badge} />
@@ -422,61 +382,18 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
                 <aside className="hidden lg:sticky lg:top-24 lg:block">
                   <p className="k mb-2 text-forest">Briefing</p>
                   <GarageCard compact stats={statsFromProject(brief, gridByHandle[brief.handle] || null, gap)} />
+                  <SupportForm project={selected || brief} />
                 </aside>
                 {hoverHandle ? (
-                  <div className="fixed inset-x-4 bottom-4 z-40 lg:hidden">
+                  <div className="fixed inset-x-4 bottom-4 z-40 max-h-[70vh] overflow-y-auto lg:hidden">
                     <GarageCard compact stats={statsFromProject(brief, gridByHandle[brief.handle] || null, gap)} />
+                    <SupportForm project={selected || brief} />
                   </div>
                 ) : null}
               </>
             );
           })()}
         </div>
-      ) : null}
-
-      {selected ? (
-        <form onSubmit={onSupport} className="card mt-6 p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="k">Support with RP</p>
-              <h2 className="mt-1 text-xl font-semibold">{selected.display_name || selected.handle}</h2>
-              <p className="mt-1 text-sm text-neutral-600">
-                Now {fmtRp(selected.total_rp)}
-                {predicted ? ` · estimated rank #${predicted} on this page after this support` : ""}
-              </p>
-            </div>
-            <button type="button" onClick={() => setSelected(null)} className="text-xs uppercase tracking-wide text-neutral-500">
-              Close
-            </button>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-            <label className="text-xs uppercase tracking-wide text-neutral-500">
-              Amount (RP)
-              <input
-                type="number"
-                min={1}
-                value={amount}
-                onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 1))}
-                className="mt-1 w-full rounded-lg border border-emerald-100 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="text-xs uppercase tracking-wide text-neutral-500">
-              Reason (optional)
-              <input
-                value={reason}
-                onChange={(e) => setReason(e.target.value.slice(0, 128))}
-                className="mt-1 w-full rounded-lg border border-emerald-100 px-3 py-2 text-sm"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={busy}
-              className="self-end rounded-full bg-forest px-5 py-2.5 text-sm font-semibold uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              {busy ? "Supporting…" : `Support ${fmtRp(amount)}`}
-            </button>
-          </div>
-        </form>
       ) : null}
 
       {pages > 1 && !error ? (

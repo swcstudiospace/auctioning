@@ -39,7 +39,7 @@ export default function GarageCard({
         <p className="k">Identity</p>
         <div className="mt-1 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <CompanyIcon url={stats.url} name={stats.displayName} size={36} />
+            <CompanyIcon url={stats.url} name={stats.displayName} handle={stats.handle} size={36} />
             <div className="min-w-0">
               <h2 className="truncate text-base font-bold">{stats.displayName}</h2>
               {stats.tag ? (
@@ -79,7 +79,7 @@ export default function GarageCard({
     <div>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <CompanyIcon url={stats.url} name={stats.displayName} size={48} />
+          <CompanyIcon url={stats.url} name={stats.displayName} handle={stats.handle} size={48} />
           <div className="min-w-0">
             <h2 className="text-4xl font-bold">{stats.displayName} GARAGE</h2>
             {stats.blurb ? <p className="mt-2 max-w-xl text-neutral-600">{stats.blurb}</p> : null}

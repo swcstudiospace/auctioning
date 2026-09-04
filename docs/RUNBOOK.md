@@ -86,11 +86,48 @@ support a project (409 when balance insufficient).
 
 ## 5. Marketing site (Vercel)
 
+The site is Next.js 15 (App Router) under `marketing/`. It does **not** query
+Postgres. Rank/news/live call `/v1/*`; Next rewrites those to Shuttle.
+
+Vercel project `swcstudiospace/auctioning`:
+
+- Root Directory = `marketing`
+- Framework = **Next.js** (not Other — Other served `public/` and 404'd)
+- Deploy from the **repo root** (`vercel deploy --prod`). Do not pass
+  `./marketing` as the CLI path while Root Directory is already `marketing`
+  (that resolves to `marketing/marketing`).
+
 ```bash
-cd marketing && npm ci && vercel deploy --prod
+# from repo root, after `vercel link --project auctioning`
+vercel deploy --prod --yes
 ```
 
-Static export; no server functions. Keep `/legal/` consistent with docs/LEGAL.md.
+Env vars this Next app actually reads (Production + Preview + Development):
+
+| Name | Where | Value |
+|---|---|---|
+| `AUCTIONING_INTERNAL_API_URL` | server + rewrites | Public Shuttle URL, e.g. `https://<project>.shuttle.app` |
+| `NEXT_PUBLIC_API_URL` | browser | Leave empty so the browser uses same-origin `/v1` |
+| `NEXT_PUBLIC_WHOP_CHECKOUT_URL` | browser | Only if a real Whop checkout exists; never invent |
+
+`DATABASE_URL` / Solana / Whop webhook secrets belong on **Shuttle**, not on
+this Next project. Copying the root `.env.example` into Vercel does not wire
+the catalog.
+
+### Supabase
+
+Do not add `@supabase/supabase-js` to `marketing/`. Catalog, RP lots, and races
+live in Shuttle (sqlx + `shuttle-shared-db`). A Next/Supabase client would
+bypass that ledger.
+
+Supabase **can** host Postgres for `auctioning-api-runner` (`DATABASE_URL` →
+sqlx `PgPool`). Use the **session / direct** string (port 5432) for sqlx and
+`sqlx migrate`. Transaction-mode Supavisor (`:6543`) breaks sqlx prepared
+statements. Production Shuttle still uses `#[shuttle_shared_db::Postgres]`
+unless that macro is replaced with an env-backed pool. RLS on Supabase is
+irrelevant while the only consumer is the Rust API (service connection).
+
+Keep `/legal/` consistent with docs/LEGAL.md.
 
 ## 6. Seed projects from outbid.lol
 

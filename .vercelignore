@@ -1,0 +1,15 @@
+# Never upload secrets or key material with CLI deploys.
+**/Secrets.toml
+keys/*.json
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Stale artifacts — Next.js builds on Vercel.
+marketing/out
+marketing/.next
+marketing/node_modules
+marketing/tsconfig.tsbuildinfo
+target
+.git

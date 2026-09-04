@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import GarageCard, { statsFromProject, type GarageStats } from "@/components/garage/GarageCard";
+import SupportForm from "@/components/board/SupportForm";
 import { getJson, recordClick, type GridSlot, type Project } from "@/lib/api";
 import { fetchChampionship } from "@/lib/race";
 
 export default function GarageLive({ handle }: { handle: string }) {
   const [stats, setStats] = useState<GarageStats | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [points, setPoints] = useState<number | null>(null);
   const [wins, setWins] = useState<number | null>(null);
 
@@ -39,6 +41,7 @@ export default function GarageLive({ handle }: { handle: string }) {
         clicks: project?.clicks ?? slot?.clicks ?? 0,
       };
       setStats(statsFromProject(base, slot));
+      setProject(base);
     }
     load();
     return () => {
@@ -84,9 +87,10 @@ export default function GarageLive({ handle }: { handle: string }) {
           </a>
         ) : null}
         <Link href={"/rank?q=" + encodeURIComponent(stats.handle)} className="text-forest">
-          Support on the board →
+          Open on the board →
         </Link>
       </div>
+      {project ? <SupportForm project={project} /> : null}
     </main>
   );
 }

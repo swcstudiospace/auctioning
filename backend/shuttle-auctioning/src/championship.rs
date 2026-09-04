@@ -62,6 +62,8 @@ pub struct ChampionshipRow {
     pub wins: i32,
     pub best_finish: i32,
     pub rank: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 /// Fold session results into standings.
@@ -104,6 +106,7 @@ pub fn accumulate(results: &[SessionResult]) -> Vec<ChampionshipRow> {
             wins: a.wins,
             best_finish: a.best_finish,
             rank: 0,
+            display_name: None,
         })
         .collect();
 
@@ -128,7 +131,6 @@ fn session_points(r: &SessionResult) -> i32 {
     };
     base + fastest_pace_bonus(r.fastest_pace)
 }
-
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct FinishedSnapshotRow {
@@ -279,15 +281,15 @@ mod tests {
     fn sort_points_wins_best_finish_handle() {
         // points desc, then wins desc, then best_finish asc, then handle asc.
         let rows = accumulate(&[
-            gp("zeta", 1, false),  // 25, 1 win, best 1
-            gp("nowin", 6, false), // 8, 0 wins, best 6
+            gp("zeta", 1, false),       // 25, 1 win, best 1
+            gp("nowin", 6, false),      // 8, 0 wins, best 6
             sprint("haswin", 1, false), // 8, 1 win, best 1
-            gp("close", 3, false), // 15
-            gp("close", 10, false), // +1 → 16, 0 wins, best 3
+            gp("close", 3, false),      // 15
+            gp("close", 10, false),     // +1 → 16, 0 wins, best 3
             gp("spread", 6, false),
             gp("spread", 6, false), // 16, 0 wins, best 6
-            gp("mike", 2, false),  // 18, 0 wins, best 2
-            gp("alex", 2, false),  // 18, 0 wins, best 2
+            gp("mike", 2, false),   // 18, 0 wins, best 2
+            gp("alex", 2, false),   // 18, 0 wins, best 2
         ]);
 
         let order: Vec<&str> = rows.iter().map(|r| r.handle.as_str()).collect();
@@ -379,5 +381,4 @@ mod tests {
         assert_eq!(results[0].kind, SessionKind::GrandTour);
         assert!(results[0].fastest_pace);
     }
-
 }

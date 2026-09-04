@@ -2,8 +2,8 @@
 
 use crate::catalog;
 use crate::championship;
-use crate::featured;
 use crate::error::{AppError, AppResult};
+use crate::featured;
 use crate::ledger;
 use crate::narrative;
 use crate::oauth_llm;
@@ -440,11 +440,7 @@ pub async fn list_projects(
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty());
-    let q = query
-        .q
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let q = query.q.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let result = catalog::list_projects_page(&state.db, page, per_page, tag, q)
         .await
         .map_err(AppError::from)?;
@@ -687,13 +683,11 @@ pub async fn narrate_event(
     if !oauth_cfg.completion_url.is_empty() {
         if let Ok(Some(token)) = oauth_llm::load_access_token(&state.db).await {
             for post in bundle.posts.iter_mut() {
-                match oauth_llm::polish(&oauth_cfg, &token, post.channel, &post.body, &input).await
+                if let Ok(body) =
+                    oauth_llm::polish(&oauth_cfg, &token, post.channel, &post.body, &input).await
                 {
-                    Ok(body) => {
-                        post.body = body;
-                        post.source = narrative::NarrativeSource::Llm;
-                    }
-                    Err(_) => {}
+                    post.body = body;
+                    post.source = narrative::NarrativeSource::Llm;
                 }
             }
         }
@@ -776,7 +770,22 @@ pub async fn championship_standings(
         .await
         .map_err(AppError::from)?;
     let results = championship::session_results_from_rows(&rows);
-    let standings = championship::accumulate(&results);
+    let mut standings = championship::accumulate(&results);
+    if !standings.is_empty() {
+        let handles: Vec<String> = standings.iter().map(|s| s.handle.clone()).collect();
+        let names: Vec<(String, Option<String>)> =
+            sqlx::query_as("SELECT handle, display_name FROM projects WHERE handle = ANY($1)")
+                .bind(&handles)
+                .fetch_all(&state.db)
+                .await
+                .map_err(AppError::from)?;
+        let map: std::collections::HashMap<_, _> = names.into_iter().collect();
+        for row in &mut standings {
+            if let Some(n) = map.get(&row.handle) {
+                row.display_name = n.clone();
+            }
+        }
+    }
     Ok(Json(json!({ "standings": standings })))
 }
 
@@ -979,7 +988,11 @@ mod featured_signal_tests {
         }
     }
 
-    fn window(race_type: &str, starts: chrono::DateTime<Utc>, ends: chrono::DateTime<Utc>) -> race_engine::RaceWindowRow {
+    fn window(
+        race_type: &str,
+        starts: chrono::DateTime<Utc>,
+        ends: chrono::DateTime<Utc>,
+    ) -> race_engine::RaceWindowRow {
         race_engine::RaceWindowRow {
             id: uuid::Uuid::from_u128(1),
             slug: "green".into(),
@@ -994,10 +1007,7 @@ mod featured_signal_tests {
 
     #[test]
     fn mix_paid_and_community_is_100() {
-        let grid = vec![
-            slot(1, 100, Some(10), 80, 20),
-            slot(2, 90, Some(5), 0, 90),
-        ];
+        let grid = vec![slot(1, 100, Some(10), 80, 20), slot(2, 90, Some(5), 0, 90)];
         assert_eq!(mix_score(&grid), 100);
     }
 
