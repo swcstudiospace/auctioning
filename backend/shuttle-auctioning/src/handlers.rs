@@ -1,5 +1,6 @@
 //! HTTP handlers.
 
+use crate::auth::{AuthedWallet, Ingest, Operator};
 use crate::catalog;
 use crate::championship;
 use crate::error::{AppError, AppResult};
@@ -20,8 +21,35 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-pub async fn health(State(_state): State<crate::AppState>) -> Json<serde_json::Value> {
-    Json(json!({ "ok": true, "service": "auctioning-backend" }))
+/// Liveness: the process is up. Never touches the database.
+pub async fn health(State(state): State<crate::AppState>) -> Json<serde_json::Value> {
+    Json(json!({
+        "ok": true,
+        "service": "auctioning-backend",
+        "version": env!("CARGO_PKG_VERSION"),
+        "env": state.cfg.env.as_str(),
+    }))
+}
+
+/// Readiness: database reachable and migrations applied. 503 otherwise.
+pub async fn ready(State(state): State<crate::AppState>) -> AppResult<Json<serde_json::Value>> {
+    let probe = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations WHERE success",
+        )
+        .fetch_one(&state.db),
+    )
+    .await;
+    match probe {
+        Ok(Ok(version)) => Ok(Json(json!({
+            "ready": true,
+            "migration_version": version,
+            "version": env!("CARGO_PKG_VERSION"),
+        }))),
+        Ok(Err(e)) => Err(AppError::Unavailable(format!("database: {e}"))),
+        Err(_) => Err(AppError::Unavailable("database probe timed out".into())),
+    }
 }
 
 #[derive(Serialize)]
@@ -69,10 +97,12 @@ pub struct EarnRequest {
 /// in the FREE bucket — never the paid/cashable one.
 pub async fn earn_rp(
     State(state): State<crate::AppState>,
-    headers: HeaderMap,
+    _ingest: Ingest,
     Json(req): Json<EarnRequest>,
 ) -> AppResult<Json<RpView>> {
-    check_ingest(&state, &headers)?;
+    if !ledger::valid_wallet(&req.wallet) {
+        return Err(AppError::BadRequest("wallet invalid".into()));
+    }
     if req.amount <= 0 || req.amount > 10_000 {
         return Err(AppError::BadRequest("amount out of range".into()));
     }
@@ -95,46 +125,24 @@ pub async fn earn_rp(
     Ok(Json(updated.into()))
 }
 
-fn check_ingest(state: &crate::AppState, headers: &HeaderMap) -> AppResult<()> {
-    match &state.cfg.ingest_secret {
-        None => Ok(()), // dev mode: open ingest, documented in README
-        Some(secret) => {
-            let provided = headers
-                .get("x-auctioning-ingest")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or_default();
-            if constant_time_eq(provided.as_bytes(), secret.as_bytes()) {
-                Ok(())
-            } else {
-                Err(AppError::Unauthorized)
-            }
-        }
-    }
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct WeeklyClaimRequest {
-    pub wallet: String,
+    /// Optional legacy field; must equal the session wallet when present.
+    #[serde(default)]
+    pub wallet: Option<String>,
 }
 
 pub async fn claim_weekly(
     State(state): State<crate::AppState>,
-    Json(req): Json<WeeklyClaimRequest>,
+    auth: AuthedWallet,
+    body: Option<Json<WeeklyClaimRequest>>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let req = body.map(|Json(b)| b).unwrap_or_default();
+    auth.require_match(req.wallet.as_deref())?;
     let amount = state.cfg.weekly_free_rp;
     // Stipends expire when the week rolls over: next Monday 00:00 UTC.
     let expires_at = ledger::next_week_start(chrono::Utc::now());
-    match ledger::claim_weekly(&state.db, &req.wallet, amount, expires_at)
+    match ledger::claim_weekly(&state.db, &auth.0, amount, expires_at)
         .await
         .map_err(AppError::from)?
     {
@@ -150,7 +158,8 @@ pub async fn claim_weekly(
 
 #[derive(Deserialize)]
 pub struct SpendRequest {
-    pub wallet: String,
+    #[serde(default)]
+    pub wallet: Option<String>,
     pub amount: i64,
     pub reason: String,
 }
@@ -159,15 +168,17 @@ pub struct SpendRequest {
 /// response records the split for transparency. Atomic — no partial spends.
 pub async fn spend_rp(
     State(state): State<crate::AppState>,
+    auth: AuthedWallet,
     Json(req): Json<SpendRequest>,
 ) -> AppResult<Json<ledger::SpendBreakdown>> {
+    auth.require_match(req.wallet.as_deref())?;
     if req.amount <= 0 || req.amount > 1_000_000 {
         return Err(AppError::BadRequest("amount out of range".into()));
     }
     if req.reason.len() > 128 {
         return Err(AppError::BadRequest("reason too long".into()));
     }
-    match ledger::spend(&state.db, &req.wallet, req.amount, &req.reason)
+    match ledger::spend(&state.db, &auth.0, req.amount, &req.reason)
         .await
         .map_err(AppError::from)?
     {
@@ -178,7 +189,8 @@ pub async fn spend_rp(
 
 #[derive(Deserialize)]
 pub struct ContentReadRequest {
-    pub wallet: String,
+    #[serde(default)]
+    pub wallet: Option<String>,
     pub slug: String,
 }
 
@@ -193,11 +205,16 @@ pub async fn list_content(
 
 pub async fn content_read(
     State(state): State<crate::AppState>,
+    auth: AuthedWallet,
     Json(req): Json<ContentReadRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    auth.require_match(req.wallet.as_deref())?;
+    if req.slug.is_empty() || req.slug.len() > 128 {
+        return Err(AppError::BadRequest("slug invalid".into()));
+    }
     // Content bonus RP expires with the current promo week as well.
     let expires_at = ledger::next_week_start(chrono::Utc::now());
-    match ledger::content_read_reward(&state.db, &req.wallet, &req.slug, expires_at)
+    match ledger::content_read_reward(&state.db, &auth.0, &req.slug, expires_at)
         .await
         .map_err(AppError::from)?
     {
@@ -234,31 +251,50 @@ pub async fn whop_webhook(
         return Err(AppError::Unauthorized);
     }
 
-    let ev: WhopWebhookEvent =
+    let raw: serde_json::Value =
         serde_json::from_slice(&body).map_err(|e| AppError::BadRequest(e.to_string()))?;
-    let paid = whop::parse_paid_event(&ev);
+    let ev: WhopWebhookEvent =
+        serde_json::from_value(raw.clone()).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let paid = whop::parse_paid_event_with_unit(&ev, state.cfg.whop_amount_unit);
+    let event_type = ev.r#type.clone();
 
-    match (&paid.wallet, ev.r#type.as_str()) {
-        (Some(wallet), t) if t.contains("payment") || t.contains("membership") => {
-            // Private-side entry for a fiat purchase. Matching public receipt
-            // is log_paid_rp (paid dollars only — Afterburner pace stays off-chain).
-            crate::events::credit_paid_with_card(
-                &state.db,
-                wallet,
-                rp_from_cents(paid.amount_cents.unwrap_or(0)),
-                &format!("whop:{t}"),
-                paid.payment_id.as_deref(),
-            )
-            .await
-            .map_err(AppError::from)?;
-            tracing::info!(wallet, event = %t, "whop paid event recorded");
-            Ok(Json(json!({ "ok": true, "recorded": true })))
+    let relevant = event_type.contains("payment") || event_type.contains("membership");
+    let outcome = match (&paid.wallet, relevant) {
+        (Some(wallet), true) if ledger::valid_wallet(wallet) => {
+            let rp = rp_from_cents(paid.amount_cents.unwrap_or(0));
+            if rp <= 0 {
+                whop::WebhookOutcome::Rejected
+            } else {
+                // Private-side entry for a fiat purchase. Matching public receipt
+                // is log_paid_rp (paid dollars only — Afterburner pace stays off-chain).
+                let credited = crate::events::credit_paid_with_card(
+                    &state.db,
+                    wallet,
+                    rp,
+                    &format!("whop:{event_type}"),
+                    paid.payment_id.as_deref(),
+                )
+                .await
+                .map_err(AppError::from)?;
+                if credited.duplicate {
+                    whop::WebhookOutcome::Duplicate
+                } else {
+                    whop::WebhookOutcome::Recorded
+                }
+            }
         }
-        _ => {
-            // Unhandled/irrelevant event types are ACKed to stop retries.
-            Ok(Json(json!({ "ok": true, "ignored": true })))
-        }
-    }
+        (Some(_), true) => whop::WebhookOutcome::Rejected,
+        _ => whop::WebhookOutcome::Ignored,
+    };
+
+    whop::log_webhook(&state.db, &event_type, &paid, outcome, &raw)
+        .await
+        .map_err(AppError::from)?;
+    tracing::info!(event = %event_type, outcome = outcome.as_str(), "whop webhook");
+
+    // Every verified delivery is ACKed so Whop stops retrying; the log row
+    // carries the outcome for reconciliation.
+    Ok(Json(json!({ "ok": true, "outcome": outcome.as_str() })))
 }
 
 fn rp_from_cents(cents: i64) -> i64 {
@@ -295,6 +331,7 @@ pub struct OpenRaceRequest {
 
 pub async fn races_open(
     State(state): State<crate::AppState>,
+    _op: Operator,
     Json(req): Json<OpenRaceRequest>,
 ) -> AppResult<Json<ledger::RaceRow>> {
     if req.project_pda.is_empty() || req.project_pda.len() > 64 {
@@ -314,6 +351,7 @@ pub struct SettleRaceRequest {
 
 pub async fn races_settle(
     State(state): State<crate::AppState>,
+    _op: Operator,
     Path((project_pda, race_id)): Path<(String, i64)>,
     Json(req): Json<SettleRaceRequest>,
 ) -> AppResult<Json<ledger::RaceRow>> {
@@ -360,10 +398,9 @@ pub struct ImportRequest {
 
 pub async fn import_projects(
     State(state): State<crate::AppState>,
-    headers: HeaderMap,
+    _ingest: Ingest,
     Json(req): Json<ImportRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    check_ingest(&state, &headers)?;
     if req.projects.is_empty() {
         return Err(AppError::BadRequest("empty import batch".into()));
     }
@@ -394,8 +431,19 @@ pub struct SubmitProjectRequest {
 /// Duplicate URL/host returns the existing row with created=false.
 pub async fn submit_project(
     State(state): State<crate::AppState>,
+    headers: HeaderMap,
     Json(req): Json<SubmitProjectRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let key = format!("submit:{}", crate::ratelimit::client_key(&headers));
+    if !state
+        .limiter
+        .check(&key, state.cfg.rate_limit_per_min.clamp(5, 30))
+    {
+        return Err(AppError::TooManyRequests);
+    }
+    if req.url.len() > 2048 {
+        return Err(AppError::BadRequest("url too long".into()));
+    }
     let outcome = catalog::submit_site(
         &state.db,
         catalog::SubmitSite {
@@ -468,7 +516,8 @@ pub async fn get_project(
 
 #[derive(Deserialize)]
 pub struct SupportRequest {
-    pub wallet: String,
+    #[serde(default)]
+    pub wallet: Option<String>,
     pub amount: i64,
     /// Optional free-text why ("their new app went viral").
     pub reason: Option<String>,
@@ -478,9 +527,11 @@ pub struct SupportRequest {
 /// Atomic; writes one immutable allocation row per call.
 pub async fn support_project(
     State(state): State<crate::AppState>,
+    auth: AuthedWallet,
     Path(handle): Path<String>,
     Json(req): Json<SupportRequest>,
 ) -> AppResult<Json<catalog::SupportOutcome>> {
+    auth.require_match(req.wallet.as_deref())?;
     if req.amount <= 0 || req.amount > 1_000_000 {
         return Err(AppError::BadRequest("amount out of range".into()));
     }
@@ -489,7 +540,7 @@ pub async fn support_project(
     }
     match catalog::allocate_to_project(
         &state.db,
-        &req.wallet,
+        &auth.0,
         &handle,
         req.amount,
         req.reason.as_deref(),
@@ -628,6 +679,7 @@ pub async fn race_window_grid(
 
 pub async fn race_window_snapshot(
     State(state): State<crate::AppState>,
+    _op: Operator,
     Path(slug): Path<String>,
 ) -> AppResult<Json<serde_json::Value>> {
     let window = race_engine::window_by_slug(&state.db, &slug)
@@ -662,6 +714,7 @@ pub async fn race_window_events(
 /// Optional LLM is not required; missing/failed polish stays on templates.
 pub async fn narrate_event(
     State(state): State<crate::AppState>,
+    _op: Operator,
     Path((slug, event_id)): Path<(String, uuid::Uuid)>,
 ) -> AppResult<Json<serde_json::Value>> {
     let window = race_engine::window_by_slug(&state.db, &slug)
@@ -738,10 +791,9 @@ pub struct OpenAfterburnerRequest {
 
 pub async fn open_afterburner(
     State(state): State<crate::AppState>,
-    headers: HeaderMap,
+    _ingest: Ingest,
     Json(req): Json<OpenAfterburnerRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    check_ingest(&state, &headers)?;
     let hours = req.hours.unwrap_or(48).clamp(1, 168);
     let card = crate::events::open_afterburner(&state.db, chrono::Duration::hours(hours))
         .await
@@ -813,11 +865,14 @@ async fn featured_race_from_windows(
     now: chrono::DateTime<chrono::Utc>,
 ) -> AppResult<Option<featured::FeaturedRace>> {
     let mut signals = Vec::new();
+    let lifetime = race_engine::lifetime_grid(db)
+        .await
+        .map_err(AppError::from)?;
     for window in windows {
         if !window.status.eq_ignore_ascii_case("live") {
             continue;
         }
-        let (grid, _pending) = race_engine::grid_for_window(db, window)
+        let (grid, _pending) = race_engine::grid_for_window_with_lifetime(db, window, &lifetime)
             .await
             .map_err(AppError::from)?;
         let events = race_engine::events_for_window(db, window.id, 100)

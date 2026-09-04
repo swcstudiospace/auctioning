@@ -14,6 +14,7 @@ import {
   type ProjectList,
   type RpView,
 } from "@/lib/api";
+import { connectAndSignIn } from "@/lib/auth";
 import CompanyIcon from "@/components/chrome/CompanyIcon";
 import { RaceBadge } from "@/components/chrome/RaceBadge";
 import GarageCard, { statsFromProject } from "@/components/garage/GarageCard";
@@ -179,17 +180,19 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
 
   async function connectWallet(): Promise<string | null> {
     setWalletMsg(null);
-    const p = phantom();
-    if (!p) {
+    if (!phantom()) {
       setWalletMsg("Phantom not found. Install the Phantom browser extension.");
       return null;
     }
     try {
-      const resp = await p.connect();
-      const addr = resp.publicKey.toString();
-      setWallet(addr);
-      await refreshRp(addr);
-      return addr;
+      const res = await connectAndSignIn();
+      if (!res.ok) {
+        setWalletMsg(res.error);
+        return null;
+      }
+      setWallet(res.wallet);
+      await refreshRp(res.wallet);
+      return res.wallet;
     } catch (e) {
       setWalletMsg(e instanceof Error ? e.message : "Phantom connect rejected");
       return null;

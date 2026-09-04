@@ -2,17 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { claimWeekly, getRp, supportProject, type Project, type RpView } from "@/lib/api";
-
-type Phantom = {
-  isPhantom?: boolean;
-  connect: () => Promise<{ publicKey: { toString: () => string } }>;
-};
-
-function phantom(): Phantom | null {
-  if (typeof window === "undefined") return null;
-  const w = window as unknown as { solana?: Phantom; phantom?: { solana?: Phantom } };
-  return w.solana?.isPhantom ? w.solana : w.phantom?.solana || null;
-}
+import { connectAndSignIn } from "@/lib/auth";
 
 function fmtRp(n: number): string {
   return n.toLocaleString() + " RP";
@@ -27,13 +17,12 @@ export default function SupportForm({ project }: { project: Project }) {
   const [msg, setMsg] = useState<string | null>(null);
 
   async function connect(): Promise<string | null> {
-    const p = phantom();
-    if (!p) {
-      setMsg("Install Phantom to fuel a listing.");
+    const res = await connectAndSignIn();
+    if (!res.ok) {
+      setMsg(res.error);
       return null;
     }
-    const resp = await p.connect();
-    const addr = resp.publicKey.toString();
+    const addr = res.wallet;
     setWallet(addr);
     const view = await getRp(addr);
     if (view.ok) setRp(view.data);

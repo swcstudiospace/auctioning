@@ -8,7 +8,6 @@ use crate::error::{AppError, AppResult};
 use crate::race_engine::{self, RaceEventKind, RaceWindowRow};
 use auctioning_core::TickEnvelope;
 use axum::extract::{Path, State};
-use axum::http::HeaderMap;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -310,33 +309,6 @@ pub async fn session_grid(
         .collect())
 }
 
-fn check_ingest(state: &crate::AppState, headers: &HeaderMap) -> AppResult<()> {
-    match &state.cfg.ingest_secret {
-        None => Ok(()), // dev mode: open ingest
-        Some(secret) => {
-            let provided = headers
-                .get("x-auctioning-ingest")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or_default();
-            if constant_time_eq(provided.as_bytes(), secret.as_bytes()) {
-                Ok(())
-            } else {
-                Err(AppError::Unauthorized)
-            }
-        }
-    }
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
 fn projection_json(p: &TickProjection) -> Value {
     json!({
         "kind": p.kind,
@@ -351,11 +323,10 @@ fn projection_json(p: &TickProjection) -> Value {
 
 pub async fn ingest_window_tick(
     State(state): State<crate::AppState>,
+    _ingest: crate::auth::Ingest,
     Path(slug): Path<String>,
-    headers: HeaderMap,
     Json(env): Json<TickEnvelope>,
 ) -> AppResult<Json<Value>> {
-    check_ingest(&state, &headers)?;
     if env.session_id.is_empty() {
         return Err(AppError::BadRequest("session_id required".into()));
     }

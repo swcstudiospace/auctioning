@@ -209,6 +209,7 @@ async fn apply_status(
 
 pub async fn approve_handler(
     State(state): State<crate::AppState>,
+    _op: crate::auth::Operator,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<QueueRow>> {
     apply_status(&state.db, id, PublishStatus::Approved, None, None, false)
@@ -218,6 +219,7 @@ pub async fn approve_handler(
 
 pub async fn skip_handler(
     State(state): State<crate::AppState>,
+    _op: crate::auth::Operator,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<QueueRow>> {
     apply_status(&state.db, id, PublishStatus::Skipped, None, None, false)
@@ -228,6 +230,7 @@ pub async fn skip_handler(
 /// Records an operator-confirmed publish. Does not post to any network.
 pub async fn mark_published_handler(
     State(state): State<crate::AppState>,
+    _op: crate::auth::Operator,
     Path(id): Path<Uuid>,
     Json(body): Json<MarkPublishedBody>,
 ) -> AppResult<Json<QueueRow>> {
@@ -245,6 +248,7 @@ pub async fn mark_published_handler(
 
 pub async fn queue_handler(
     State(state): State<crate::AppState>,
+    _op: crate::auth::Operator,
     Query(q): Query<QueueQuery>,
 ) -> AppResult<Json<Vec<QueueRow>>> {
     if let Some(status) = &q.status {

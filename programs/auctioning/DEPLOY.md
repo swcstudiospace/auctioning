@@ -44,6 +44,23 @@ Example (using a TS client or `anchor` test):
 - fee_vault = treasury receiving SOL fees on paid RP
 - fee_bps = e.g. 300 (3%)
 
+## 5b. Operating the program
+
+`update_config` is authority-gated and takes optional arguments so one call can
+do one thing:
+
+| Action | Call |
+|---|---|
+| Pause purchases + race opens (settle still allowed) | `update_config(None, Some(true), None)` |
+| Resume | `update_config(None, Some(false), None)` |
+| Change fee | `update_config(Some(250), None, None)` |
+| Rotate fee vault | pass `new_fee_vault` account (must be system-owned) |
+| Hand authority to a multisig | `update_config(None, None, Some(<squads pda>))` — irreversible for the old key |
+
+`open_race` now requires the project owner to sign and reads `config` (paused
+check). `settle_race` rejects payloads whose ranks are not exactly `0..n` in
+order or that repeat an entrant.
+
 ## 6. L2 / MagicBlock Integration
 Live races run on MagicBlock Ephemeral Rollup.
 - Open race on mainnet (this program)

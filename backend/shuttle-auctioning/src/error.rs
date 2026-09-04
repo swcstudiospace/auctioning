@@ -10,6 +10,12 @@ pub enum AppError {
     BadRequest(String),
     #[error("unauthorized")]
     Unauthorized,
+    #[error("forbidden: {0}")]
+    Forbidden(String),
+    #[error("too many requests")]
+    TooManyRequests,
+    #[error("service unavailable: {0}")]
+    Unavailable(String),
     /// Weekly free RP already claimed / content already read this week.
     #[error("already claimed this week")]
     RateLimited,
@@ -33,6 +39,18 @@ impl IntoResponse for AppError {
             AppError::Unauthorized => {
                 (StatusCode::UNAUTHORIZED, json!({ "error": "unauthorized" }))
             }
+            AppError::Forbidden(m) => (
+                StatusCode::FORBIDDEN,
+                json!({ "error": "forbidden", "message": m }),
+            ),
+            AppError::TooManyRequests => (
+                StatusCode::TOO_MANY_REQUESTS,
+                json!({ "error": "too_many_requests", "retry_after_secs": 60 }),
+            ),
+            AppError::Unavailable(m) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                json!({ "error": "unavailable", "message": m }),
+            ),
             AppError::RateLimited => (
                 StatusCode::TOO_MANY_REQUESTS,
                 json!({ "error": "rate_limited" }),

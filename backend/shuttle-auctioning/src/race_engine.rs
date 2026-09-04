@@ -7,6 +7,8 @@
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 use uuid::Uuid;
 
 /// One allocation sample fed into the pure scorer.
@@ -827,25 +829,88 @@ pub async fn grid_for_window(
     db: &PgPool,
     window: &RaceWindowRow,
 ) -> Result<(Vec<GridSlot>, Vec<DerivedEvent>), sqlx::Error> {
+    let lifetime = lifetime_grid(db).await?;
+    grid_for_window_with_lifetime(db, window, &lifetime).await
+}
+
+/// Same as [`grid_for_window`] with a caller-supplied lifetime board, so a
+/// request that scores many windows loads the lifetime board once.
+pub async fn grid_for_window_with_lifetime(
+    db: &PgPool,
+    window: &RaceWindowRow,
+    lifetime: &[GridSlot],
+) -> Result<(Vec<GridSlot>, Vec<DerivedEvent>), sqlx::Error> {
     let now = Utc::now();
     let cfg = config_from_window(window, now);
     let allocs =
         load_allocations(db, window.tag.as_deref(), cfg.window_start, cfg.window_end).await?;
     let prev = load_previous_snapshot(db, window.id).await?;
     let (mut grid, events) = compute_grid(&allocs, &prev, &cfg);
-    let lifetime = lifetime_grid(db).await?;
-    attach_lifetime_ranks(&mut grid, &lifetime);
+    attach_lifetime_ranks(&mut grid, lifetime);
     Ok((grid, events))
+}
+
+/// Lifetime board cache. The board only changes when an allocation lands, so
+/// a short TTL plus explicit invalidation keeps every grid request from
+/// re-reading the whole allocation table.
+const LIFETIME_TTL_SECS: u64 = 5;
+
+type LifetimeCache = Mutex<Option<(Instant, Vec<GridSlot>)>>;
+
+fn lifetime_cache() -> &'static LifetimeCache {
+    static CACHE: OnceLock<LifetimeCache> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(None))
+}
+
+/// Call after any write to `project_allocations`.
+pub fn invalidate_lifetime_cache() {
+    if let Ok(mut c) = lifetime_cache().lock() {
+        *c = None;
+    }
 }
 
 /// Lifetime board treated as an open-ended race (velocity still last hour).
 pub async fn lifetime_grid(db: &PgPool) -> Result<Vec<GridSlot>, sqlx::Error> {
+    if let Ok(c) = lifetime_cache().lock() {
+        if let Some((at, grid)) = c.as_ref() {
+            if at.elapsed().as_secs() < LIFETIME_TTL_SECS {
+                return Ok(grid.clone());
+            }
+        }
+    }
+    let grid = lifetime_grid_uncached(db).await?;
+    if let Ok(mut c) = lifetime_cache().lock() {
+        *c = Some((Instant::now(), grid.clone()));
+    }
+    Ok(grid)
+}
+
+pub async fn lifetime_grid_uncached(db: &PgPool) -> Result<Vec<GridSlot>, sqlx::Error> {
     let now = Utc::now();
     let start = DateTime::<Utc>::from_timestamp(0, 0).unwrap_or(now);
     let allocs = load_allocations(db, None, start, now).await?;
     let cfg = EngineConfig::default_for_window(now, start, now);
     let (grid, _) = compute_grid(&allocs, &[], &cfg);
     Ok(grid)
+}
+
+/// Retention: drop snapshot rows older than `keep_days`, always keeping the
+/// latest snapshot of every window (championship + BI views read it).
+pub async fn prune_snapshots(db: &PgPool, keep_days: i64) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query(
+        r#"
+        DELETE FROM rank_snapshots s
+        WHERE s.snapshot_at < now() - ($1::bigint * interval '1 day')
+          AND s.snapshot_at < (
+              SELECT MAX(l.snapshot_at) FROM rank_snapshots l
+              WHERE l.race_window_id = s.race_window_id
+          )
+        "#,
+    )
+    .bind(keep_days.max(1))
+    .execute(db)
+    .await?;
+    Ok(res.rows_affected())
 }
 
 /// Persist a snapshot + newly derived events. Returns the grid written.
@@ -867,8 +932,9 @@ pub async fn persist_snapshot(
             r#"
             INSERT INTO rank_snapshots
                 (race_window_id, project_handle, rank, race_rp,
-                 gap_to_leader, gap_to_next, velocity, momentum, snapshot_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                 gap_to_leader, gap_to_next, velocity, momentum, snapshot_at,
+                 paid_rp, community_rp)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             "#,
         )
         .bind(window.id)
@@ -880,6 +946,8 @@ pub async fn persist_snapshot(
         .bind(slot.velocity)
         .bind(slot.momentum)
         .bind(snap_at)
+        .bind(slot.paid_rp)
+        .bind(slot.community_rp)
         .execute(&mut *tx)
         .await?;
     }

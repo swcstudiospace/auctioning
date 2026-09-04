@@ -73,11 +73,10 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      # Known debt (tracked in CHANGELOG "Unreleased"): dead code in tests/inc,
-      # deprecated solana-sdk helpers, Anchor cfg names. Remove the -A flags as each is fixed.
+      # ambiguous_glob_reexports comes from Anchor's #[program] expansion (tracked in CHANGELOG).
       - run: >-
           cargo clippy --workspace --exclude leptos-auctioning --all-targets --
-          -D warnings -A dead_code -A deprecated -A unexpected_cfgs -A ambiguous_glob_reexports
+          -D warnings -A ambiguous_glob_reexports
 
   rust-test:
     name: rust · test (${{ matrix.crate }})
@@ -119,6 +118,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p shuttle-auctioning --test integration_rp --no-fail-fast
+      - run: cargo test -p shuttle-auctioning --test http_auth --no-fail-fast
       - run: cargo test -p shuttle-auctioning --features sqlx-test --test smoke_db --no-fail-fast
 
   rust-wasm:

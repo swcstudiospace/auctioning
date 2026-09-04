@@ -19,7 +19,7 @@ fn race_result_serializes_roundtrip() {
 #[test]
 fn spaces_are_stable() {
     // Guards against accidental space regressions that would break PDA init on upgrade.
-    assert_eq!(Config::SPACE, 8 + 32 + 32 + 2 + 1 + 64);
+    assert_eq!(Config::SPACE, 8 + 32 + 32 + 2 + 1 + 1 + 63);
     assert_eq!(Project::SPACE, 8 + 32 + 8 + 8 + 8 + 8 + (4 + 32) + 1);
     assert!(Race::SPACE > 8 + 32 + 8 + 32 + 8 + 8);
 }

@@ -36,6 +36,28 @@
       var bytes = new TextEncoder().encode(message);
       return p.signMessage(bytes, "utf8");
     },
+
+    // Base58 (Bitcoin alphabet) for ed25519 signatures returned by Phantom.
+    base58: function (bytes) {
+      var ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+      var digits = [0];
+      for (var i = 0; i < bytes.length; i++) {
+        var carry = bytes[i];
+        for (var j = 0; j < digits.length; j++) {
+          carry += digits[j] << 8;
+          digits[j] = carry % 58;
+          carry = (carry / 58) | 0;
+        }
+        while (carry > 0) {
+          digits.push(carry % 58);
+          carry = (carry / 58) | 0;
+        }
+      }
+      var out = "";
+      for (var k = 0; k < bytes.length && bytes[k] === 0; k++) out += ALPHABET[0];
+      for (var d = digits.length - 1; d >= 0; d--) out += ALPHABET[digits[d]];
+      return out;
+    },
   };
 
   // Reconnect silently on load when previously authorized.

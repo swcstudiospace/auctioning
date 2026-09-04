@@ -11,15 +11,16 @@ use solana_sdk::{
     hash::Hash,
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
-    system_program,
     transaction::Transaction,
 };
 use std::str::FromStr;
 
 use crate::config::AppConfig;
 
-/// Default/placeholder; overridden by cfg.program_id at runtime (see config.rs + Secrets.toml)
-pub const PROGRAM_ID_STR: &str = "3GGYRVymmKQhmxP9nw9yPs8HCf7YWw7WViPjkKFkZNGs";
+/// System program id (`11111111111111111111111111111111`).
+fn system_program_id() -> Pubkey {
+    Pubkey::from_str("11111111111111111111111111111111").expect("static system program id")
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrepareRegisterRequest {
@@ -68,7 +69,7 @@ pub fn build_register_project_ix(
     let accounts = vec![
         AccountMeta::new(project_pda, false),
         AccountMeta::new(owner, true),
-        AccountMeta::new_readonly(system_program::id(), false),
+        AccountMeta::new_readonly(system_program_id(), false),
     ];
 
     Ok(Instruction::new_with_bytes(program_id, &data, accounts))
@@ -85,12 +86,14 @@ pub fn build_open_race_ix(
         Pubkey::find_program_address(&[b"race", project_pda.as_ref(), &nonce_bytes], &program_id);
 
     let data = OPEN_RACE_DISCRIMINATOR.to_vec(); // no args
+    let config_pda = Pubkey::find_program_address(&[b"config"], &program_id).0;
 
     let accounts = vec![
+        AccountMeta::new_readonly(config_pda, false),
         AccountMeta::new(project_pda, false),
         AccountMeta::new(race_pda, false),
         AccountMeta::new(payer, true),
-        AccountMeta::new_readonly(system_program::id(), false),
+        AccountMeta::new_readonly(system_program_id(), false),
     ];
 
     Ok(Instruction::new_with_bytes(program_id, &data, accounts))
@@ -181,7 +184,7 @@ pub fn build_log_paid_rp_ix(
         AccountMeta::new(fee_vault, false),
         AccountMeta::new_readonly(config_pda, false),
         AccountMeta::new(receipt_pda, false),
-        AccountMeta::new_readonly(system_program::id(), false),
+        AccountMeta::new_readonly(system_program_id(), false),
     ];
 
     Ok(Instruction::new_with_bytes(program_id, &data, accounts))

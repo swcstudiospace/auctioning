@@ -13,13 +13,17 @@ pub struct Config {
     pub fee_bps: u16,
     /// Bump seed.
     pub bump: u8,
-    /// Reserved for future upgrades.
-    pub reserved: [u8; 64],
+    /// Circuit breaker: when true, `log_paid_rp` and `open_race` refuse.
+    /// Settlement of already-open races is still allowed.
+    pub paused: bool,
+    /// Reserved for future upgrades (was 64 bytes before `paused`).
+    pub reserved: [u8; 63],
 }
 
 impl Config {
-    pub const SPACE: usize = 8 + 32 + 32 + 2 + 1 + 64;
+    pub const SPACE: usize = 8 + 32 + 32 + 2 + 1 + 1 + 63;
     pub const SEED: &'static str = "config";
+    pub const MAX_FEE_BPS: u16 = 5000;
 }
 
 /// A business / project registered on-chain. PDA ["project", owner_pubkey].
@@ -146,4 +150,10 @@ pub enum AuctioningError {
     ZeroPayment,
     #[msg("Arithmetic overflow")]
     Overflow,
+    #[msg("Protocol is paused")]
+    Paused,
+    #[msg("Results must be ranked 0..n in order with unique entrants")]
+    BadRanking,
+    #[msg("Fee vault must be a system-owned wallet")]
+    BadFeeVault,
 }

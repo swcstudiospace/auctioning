@@ -23,7 +23,7 @@ fmt-check: ## Verify formatting
 .PHONY: clippy
 clippy: ## Lint (same flags as CI)
 	cargo clippy --workspace --exclude leptos-auctioning --all-targets -- \
-		-D warnings -A dead_code -A deprecated -A unexpected_cfgs -A ambiguous_glob_reexports
+		-D warnings -A ambiguous_glob_reexports
 
 .PHONY: test
 test: ## Unit + pure-logic tests for every native crate (no DB; integration_rp self-skips)
@@ -32,6 +32,7 @@ test: ## Unit + pure-logic tests for every native crate (no DB; integration_rp s
 .PHONY: test-db
 test-db: ## Postgres smoke + integration tests (needs DATABASE_URL, see db-up)
 	DATABASE_URL=$(DATABASE_URL) cargo test -p shuttle-auctioning --test integration_rp --no-fail-fast
+	DATABASE_URL=$(DATABASE_URL) cargo test -p shuttle-auctioning --test http_auth --no-fail-fast
 	DATABASE_URL=$(DATABASE_URL) cargo test -p shuttle-auctioning --features sqlx-test --test smoke_db --no-fail-fast
 
 .PHONY: wasm-check
@@ -82,10 +83,6 @@ web-build: ## Production build of the marketing site
 .PHONY: seed
 seed: ## Dry-run the outbid.lol seeder against the sample snapshot
 	python3 tools/seeder/outbid_seed.py --snapshot tools/seeder/seed.sample.json
-
-.PHONY: gen-test-includes
-gen-test-includes: ## Regenerate backend/.../tests/inc (legacy; see CHANGELOG)
-	backend/shuttle-auctioning/scripts/gen-integration-includes.sh
 
 # ---------------------------------------------------------------- program
 .PHONY: program-build

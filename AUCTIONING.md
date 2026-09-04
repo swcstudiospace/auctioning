@@ -177,7 +177,10 @@ Shuttle 0.57 + Axum 0.8 + sqlx **0.8** (pinned: shuttle-shared-db 0.57’s PgPoo
 
 | File | Lines (approx) | What it is |
 |---|---|---|
-| `lib.rs` | 192 | Shuttle `main`: migrations, boot sweeps, race worker, **all HTTP routes** |
+| `lib.rs` | ~300 | Shuttle `main`: config validation, migrations, boot sweeps, race worker, **all HTTP routes**, CORS/timeout/body-limit/request-id layers |
+| `auth.rs` | ~450 | Sign-In-With-Solana nonces + sessions, `AuthedWallet` / `Operator` / `Ingest` extractors, constant-time compare |
+| `ratelimit.rs` | ~150 | In-process per-IP fixed-window limiter as a tower layer |
+| `stats.rs` | ~350 | BI reads: overview, per-project telemetry, wallet history, operator revenue |
 | `config.rs` | 98 | `AppConfig` from Shuttle `SecretStore` (Whop, PROGRAM_ID, RPCs, ingest, SuperGrok, narrative LLM) |
 | `error.rs` | 46 | `AppError` → HTTP (`404`, `400`, `401`, `429`, `409`, `500`) |
 | `handlers.rs` | 637 | Thin HTTP adapters over ledger/catalog/whop/onchain/race_engine |
@@ -202,15 +205,17 @@ Shuttle 0.57 + Axum 0.8 + sqlx **0.8** (pinned: shuttle-shared-db 0.57’s PgPoo
 | `0004_race_engine.sql` | unique tx_id, race_windows, rank_snapshots, race_events |
 | `0005_narrative_posts.sql` | narrative_posts |
 | `0006_ticks_publish_oauth.sql` | er_ticks, publish_status, oauth tables, `er_tick` event type |
+| `0007_operator_events.sql` | operator_events (Afterburner etc.), wider race types |
+| `0008_project_clicks.sql` | projects.clicks |
+| `0009_auth_bi_hardening.sql` | auth_nonces, auth_sessions, whop_webhook_log, snapshot paid/community split, hot-path indexes, BI views |
 
 #### tests & scripts
 
 | File | What it is |
 |---|---|
-| `tests/integration_rp.rs` | Dual-source RP + lots + catalog (splices private modules via `tests/inc/`) |
+| `tests/integration_rp.rs` | Dual-source RP + lots + catalog against real Postgres (self-skips without `DATABASE_URL`) |
+| `tests/http_auth.rs` | Router-level tests: sign-in, wallet binding, operator/ingest gates, Whop HMAC + idempotency |
 | `tests/smoke_db.rs` | Postgres smoke (`--features sqlx-test`) |
-| `tests/inc/*.rs` | Generated copies of private modules for integration tests |
-| `scripts/gen-integration-includes.sh` | Regenerates `tests/inc/` |
 | `Secrets.toml.example` | Secret *names* for Shuttle. Real `Secrets.toml` is gitignored |
 | `Cargo.toml` | Shuttle metadata `name = "auctioning-backend"` |
 
@@ -267,7 +272,19 @@ Shuttle 0.57 + Axum 0.8 + sqlx **0.8** (pinned: shuttle-shared-db 0.57’s PgPoo
 - `GET /v1/narrative/queue`
 - `POST /v1/narrative/posts/{id}/approve|skip|mark-published`
 
-CORS is currently `CorsLayer::permissive()` — runbook flags locking this before public launch.
+CORS is locked to `ALLOWED_ORIGINS` outside dev. Every response carries
+`x-request-id`; bodies are capped at 1 MiB; requests time out at 20 s.
+
+**Auth (added in the enterprise-hardening pass)**
+
+- `GET /v1/auth/nonce` · `POST /v1/auth/verify` · `GET /v1/auth/me` · `POST /v1/auth/logout`
+- Wallet-bound writes (`AuthedWallet` extractor): `claim-weekly`, `spend`, `support`, `content/read`, `wallets/me/history`
+- Operator (`Operator` extractor, `X-Auctioning-Operator`): snapshot, narrate, narrative queue/approve/skip/mark-published, OAuth login/status, `races/open`, `races/{pda}/{id}/settle`, `stats/revenue`
+- Machine (`Ingest` extractor, `X-Auctioning-Ingest`): `rp/earn`, `projects/import`, ticks, `events/afterburner`
+
+**Business intelligence**
+
+- `GET /v1/stats/overview` · `GET /v1/projects/{handle}/stats` · `GET /v1/wallets/me/history` · `GET /v1/stats/revenue`
 
 ### `app/leptos-auctioning/` — wallet dApp
 

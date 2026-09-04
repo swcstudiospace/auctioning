@@ -34,7 +34,12 @@ sha2 = "0.10"
 solana-sdk = "2"
 bincode = "1.3"
 base64 = "0.21"
-tower-http = { version = "0.7", features = ["cors", "trace"] }
+tower = "0.5"
+tower-http = { version = "0.7", features = ["cors", "trace", "limit", "timeout", "request-id", "util"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
 
 [package.metadata.shuttle]
 # deployed via `shuttle deploy`

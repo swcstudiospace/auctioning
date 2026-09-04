@@ -732,6 +732,7 @@ pub async fn allocate_to_project(
     .await?;
 
     tx.commit().await?;
+    crate::race_engine::invalidate_lifetime_cache();
     Ok(Some(SupportOutcome {
         allocation,
         from_free: breakdown.from_free,
