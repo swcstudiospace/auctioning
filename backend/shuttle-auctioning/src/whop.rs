@@ -29,7 +29,7 @@ pub fn verify_webhook_signature(secret: &str, body: &[u8], signature_header: &st
                 Some(p.to_string())
             }
         })
-        .last()
+        .next_back()
         .unwrap_or_default();
 
     // Constant-time-ish comparison via double-HMAC; length check first.

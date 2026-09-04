@@ -42,7 +42,10 @@ pub struct OperatorEvent {
 }
 
 /// Highest-bps live card overlapping `now` (no stacking).
-pub async fn active_card(db: &PgPool, now: DateTime<Utc>) -> Result<Option<OperatorEvent>, sqlx::Error> {
+pub async fn active_card(
+    db: &PgPool,
+    now: DateTime<Utc>,
+) -> Result<Option<OperatorEvent>, sqlx::Error> {
     sqlx::query_as::<_, OperatorEvent>(
         r#"
         SELECT id, slug, name, multiplier_bps, starts_at, ends_at, tag, window_id

@@ -2,10 +2,12 @@
 name = "shuttle-auctioning"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
+repository.workspace = true
 rust-version = "1.86"
 
 [dependencies]
-auctioning-core = { path = "../../magicblock", package = "auctioning-magicblock" }
+auctioning-core = { path = "../../magicblock", version = "0.1.0", package = "auctioning-magicblock" }
 shuttle-axum = "0.57"
 shuttle-runtime = "0.57"
 shuttle-shared-db = { version = "0.57", features = ["postgres", "sqlx"] }

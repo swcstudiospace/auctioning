@@ -1,0 +1,13 @@
+.git
+target
+**/target
+**/dist
+marketing
+tools
+docs
+issues
+keys
+.env
+.env.*
+**/Secrets.toml
+*.md

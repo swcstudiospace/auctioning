@@ -1,3 +1,4 @@
+#![allow(clippy::assertions_on_constants, clippy::int_plus_one)]
 use ::auctioning::{Config, Project, Race, RaceResult, RpReceipt};
 use anchor_lang::prelude::*;
 

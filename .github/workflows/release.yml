@@ -1,0 +1,31 @@
+name: release
+
+"on":
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  api-runner:
+    name: build auctioning-api-runner (linux x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p shuttle-auctioning --bin auctioning-api-runner
+      - run: |
+          mkdir -p dist
+          cp target/release/auctioning-api-runner dist/
+          tar -C dist -czf auctioning-api-runner-${{ github.ref_name }}-linux-x86_64.tar.gz auctioning-api-runner
+          sha256sum auctioning-api-runner-*.tar.gz > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            auctioning-api-runner-*.tar.gz
+            SHA256SUMS
+            programs/auctioning/idl/auctioning.json

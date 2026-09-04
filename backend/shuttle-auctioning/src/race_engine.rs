@@ -767,12 +767,14 @@ async fn load_allocations(
     };
     Ok(rows
         .into_iter()
-        .map(|(project_handle, amount, created_at, source)| AllocationSample {
-            project_handle,
-            amount,
-            created_at,
-            source,
-        })
+        .map(
+            |(project_handle, amount, created_at, source)| AllocationSample {
+                project_handle,
+                amount,
+                created_at,
+                source,
+            },
+        )
         .collect())
 }
 
@@ -827,7 +829,8 @@ pub async fn grid_for_window(
 ) -> Result<(Vec<GridSlot>, Vec<DerivedEvent>), sqlx::Error> {
     let now = Utc::now();
     let cfg = config_from_window(window, now);
-    let allocs = load_allocations(db, window.tag.as_deref(), cfg.window_start, cfg.window_end).await?;
+    let allocs =
+        load_allocations(db, window.tag.as_deref(), cfg.window_start, cfg.window_end).await?;
     let prev = load_previous_snapshot(db, window.id).await?;
     let (mut grid, events) = compute_grid(&allocs, &prev, &cfg);
     let lifetime = lifetime_grid(db).await?;
@@ -852,7 +855,8 @@ pub async fn persist_snapshot(
 ) -> Result<(Vec<GridSlot>, Vec<DerivedEvent>), sqlx::Error> {
     let now = Utc::now();
     let cfg = config_from_window(window, now);
-    let allocs = load_allocations(db, window.tag.as_deref(), cfg.window_start, cfg.window_end).await?;
+    let allocs =
+        load_allocations(db, window.tag.as_deref(), cfg.window_start, cfg.window_end).await?;
     let prev = load_previous_snapshot(db, window.id).await?;
     let (grid, events) = compute_grid(&allocs, &prev, &cfg);
 
@@ -1157,43 +1161,46 @@ mod tests {
             clicks: 0,
             hover_footer: String::new(),
         }];
-        let life = vec![GridSlot {
-            handle: "hermes".into(),
-            rank: 1,
-            race_rp: 900,
-            velocity: 0,
-            momentum: 0,
-            gap_to_leader: 0,
-            gap_to_next: None,
-            pace_pct: None,
-            lifetime_rank: None,
-            burst_rp: 0,
-            sustain_windows: 0,
-            paid_rp: 0,
-            community_rp: 0,
-            badge: None,
-            last_overtake: None,
-            clicks: 0,
-            hover_footer: String::new(),
-        }, GridSlot {
-            handle: "openclaw".into(),
-            rank: 4,
-            race_rp: 100,
-            velocity: 0,
-            momentum: 0,
-            gap_to_leader: 0,
-            gap_to_next: None,
-            pace_pct: None,
-            lifetime_rank: None,
-            burst_rp: 0,
-            sustain_windows: 0,
-            paid_rp: 0,
-            community_rp: 0,
-            badge: None,
-            last_overtake: None,
-            clicks: 0,
-            hover_footer: String::new(),
-        }];
+        let life = vec![
+            GridSlot {
+                handle: "hermes".into(),
+                rank: 1,
+                race_rp: 900,
+                velocity: 0,
+                momentum: 0,
+                gap_to_leader: 0,
+                gap_to_next: None,
+                pace_pct: None,
+                lifetime_rank: None,
+                burst_rp: 0,
+                sustain_windows: 0,
+                paid_rp: 0,
+                community_rp: 0,
+                badge: None,
+                last_overtake: None,
+                clicks: 0,
+                hover_footer: String::new(),
+            },
+            GridSlot {
+                handle: "openclaw".into(),
+                rank: 4,
+                race_rp: 100,
+                velocity: 0,
+                momentum: 0,
+                gap_to_leader: 0,
+                gap_to_next: None,
+                pace_pct: None,
+                lifetime_rank: None,
+                burst_rp: 0,
+                sustain_windows: 0,
+                paid_rp: 0,
+                community_rp: 0,
+                badge: None,
+                last_overtake: None,
+                clicks: 0,
+                hover_footer: String::new(),
+            },
+        ];
         attach_lifetime_ranks(&mut window, &life);
         assert_eq!(window[0].lifetime_rank, Some(4));
     }

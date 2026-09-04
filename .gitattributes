@@ -1,0 +1,23 @@
+# Normalise line endings
+* text=auto eol=lf
+
+# Rust / TS sources
+*.rs text diff=rust
+*.ts text
+*.tsx text
+*.toml text
+*.sql text
+*.md text diff=markdown
+
+# Lockfiles: never merge by hand
+Cargo.lock -diff merge=binary linguist-generated
+package-lock.json -diff merge=binary linguist-generated
+
+# Generated
+programs/auctioning/idl/*.json linguist-generated
+backend/shuttle-auctioning/tests/inc/*.rs linguist-generated
+
+# Binary
+*.png binary
+*.woff2 binary
+*.so binary

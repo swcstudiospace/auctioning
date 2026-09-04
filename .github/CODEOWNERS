@@ -1,0 +1,28 @@
+# Order matters — the last matching pattern wins.
+# Replace @swcstudiospace/core with your real team handle(s).
+
+*                                   @swcstudiospace/core
+
+# On-chain program: money moves here. Two reviews, always.
+/programs/                          @swcstudiospace/core @swcstudiospace/protocol
+/magicblock/                        @swcstudiospace/core @swcstudiospace/protocol
+/keys/                              @swcstudiospace/core
+
+# Ledger + payments
+/backend/shuttle-auctioning/src/ledger.rs      @swcstudiospace/core @swcstudiospace/protocol
+/backend/shuttle-auctioning/src/whop.rs        @swcstudiospace/core @swcstudiospace/protocol
+/backend/shuttle-auctioning/src/onchain.rs     @swcstudiospace/core @swcstudiospace/protocol
+/backend/shuttle-auctioning/migrations/        @swcstudiospace/core @swcstudiospace/protocol
+
+# Legal copy
+/docs/LEGAL.md                      @swcstudiospace/core
+/docs/TOS.md                        @swcstudiospace/core
+/docs/PRIVACY.md                    @swcstudiospace/core
+/marketing/app/legal/               @swcstudiospace/core
+/marketing/app/tos/                 @swcstudiospace/core
+/marketing/app/privacy/             @swcstudiospace/core
+
+# CI / supply chain
+/.github/                           @swcstudiospace/core
+/deny.toml                          @swcstudiospace/core
+/Cargo.lock                         @swcstudiospace/core

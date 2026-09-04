@@ -1,8 +1,8 @@
 //! Shuttle backend for auctioning.lol.
 //!
-//! Private RP ledger (Postgres) + free weekly promo RP + Whop webhook dual-write
-//! + race settlement worker. Public paid RP lives on-chain (Anchor program);
-//! this service is the source of truth for everything private/free.
+//! Private RP ledger (Postgres), free weekly promo RP, Whop webhook dual-write
+//! and the race settlement worker. Public paid RP lives on-chain (Anchor
+//! program); this service is the source of truth for everything private/free.
 //!
 //! Priority #1 additions: typed RP sources, FIFO expiry lots for promo RP,
 //! project catalog with idempotent outbid.lol import path, and the immutable
@@ -94,7 +94,7 @@ pub async fn build_app(pool: sqlx::PgPool, cfg: config::AppConfig) -> Router {
         cfg: Arc::new(cfg),
     };
 
-    let router = Router::new()
+    Router::new()
         .route("/healthz", get(handlers::health))
         .route("/v1/rp/{wallet}", get(handlers::get_rp))
         .route("/v1/rp/earn", post(handlers::earn_rp))
@@ -102,7 +102,10 @@ pub async fn build_app(pool: sqlx::PgPool, cfg: config::AppConfig) -> Router {
         .route("/v1/rp/claim-weekly", post(handlers::claim_weekly))
         .route("/v1/content", get(handlers::list_content))
         .route("/v1/content/read", post(handlers::content_read))
-        .route("/v1/projects", get(handlers::list_projects).post(handlers::submit_project))
+        .route(
+            "/v1/projects",
+            get(handlers::list_projects).post(handlers::submit_project),
+        )
         .route("/v1/projects/import", post(handlers::import_projects))
         .route("/v1/projects/{handle}", get(handlers::get_project))
         .route(
@@ -201,7 +204,5 @@ pub async fn build_app(pool: sqlx::PgPool, cfg: config::AppConfig) -> Router {
         .route("/v1/events/afterburner", post(handlers::open_afterburner))
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(tower_http::trace::TraceLayer::new_for_http())
-        .with_state(state);
-
-    router
+        .with_state(state)
 }

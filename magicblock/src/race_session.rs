@@ -388,7 +388,6 @@ pub fn parse_tick_notification(text: &str) -> Option<TickEnvelope> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_sdk::signature::Signer;
 
     fn test_session() -> RaceSession {
         RaceSession::new(

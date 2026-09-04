@@ -1,0 +1,34 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      solana:
+        patterns: ["solana-*", "anchor-*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # sqlx is pinned to 0.8 by shuttle-shared-db 0.57 — bump together, by hand.
+      - dependency-name: sqlx
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: "/marketing"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      next-react:
+        patterns: ["next", "react", "react-dom", "@types/react*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

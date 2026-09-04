@@ -97,7 +97,19 @@ mod tests {
 
     #[test]
     fn all_100_scores_10000() {
-        let s = signals("grand_tour", "Grand Tour", 100, 100, 100, 100, 100, 100, 100, 12, 40);
+        let s = signals(
+            "grand_tour",
+            "Grand Tour",
+            100,
+            100,
+            100,
+            100,
+            100,
+            100,
+            100,
+            12,
+            40,
+        );
         let r = featured_score(&s);
         assert_eq!(r.score, 10_000);
         assert_eq!(r.window_slug, "grand_tour");
@@ -126,7 +138,19 @@ mod tests {
 
     #[test]
     fn because_uses_raw_overtakes_and_cover_not_weights() {
-        let s = signals("sector_scrap", "Sector Scrap", 100, 0, 0, 0, 0, 0, 0, 17, 83);
+        let s = signals(
+            "sector_scrap",
+            "Sector Scrap",
+            100,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            17,
+            83,
+        );
         let r = featured_score(&s);
         assert_eq!(
             r.because,
@@ -141,7 +165,19 @@ mod tests {
     #[test]
     fn pick_featured_prefers_higher_score() {
         let low = signals("pace_lap", "Pace Lap", 10, 0, 0, 0, 0, 0, 0, 1, 5);
-        let high = signals("grand_tour", "Grand Tour", 80, 40, 20, 10, 10, 10, 10, 9, 30);
+        let high = signals(
+            "grand_tour",
+            "Grand Tour",
+            80,
+            40,
+            20,
+            10,
+            10,
+            10,
+            10,
+            9,
+            30,
+        );
         let picked = pick_featured(&[low, high]).expect("non-empty");
         assert_eq!(picked.window_slug, "grand_tour");
         assert!(picked.score > 250);

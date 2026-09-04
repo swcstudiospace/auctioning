@@ -358,7 +358,6 @@ pub fn App() -> impl IntoView {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ActiveCard {
     pub slug: String,
@@ -374,7 +373,9 @@ fn EventBanner() -> impl IntoView {
             if let Ok(resp) = api_get("/v1/events/active").await {
                 if resp.status().is_success() {
                     #[derive(Deserialize)]
-                    struct Wrap { active: Option<ActiveCard> }
+                    struct Wrap {
+                        active: Option<ActiveCard>,
+                    }
                     if let Ok(w) = resp.json::<Wrap>().await {
                         card.set(w.active);
                     }
@@ -400,7 +401,6 @@ fn EventBanner() -> impl IntoView {
         </section>
     }
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TapePost {
@@ -684,7 +684,6 @@ fn ProjectPage(
         </section>
     }
 }
-
 
 async fn refresh_rp(addr: &str, rp: RwSignal<Option<RpView>>, err: &RwSignal<Option<String>>) {
     match api_get(&format!("/v1/rp/{addr}")).await {

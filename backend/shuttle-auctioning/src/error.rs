@@ -30,14 +30,17 @@ impl IntoResponse for AppError {
                 StatusCode::BAD_REQUEST,
                 json!({ "error": "bad_request", "message": m }),
             ),
-            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, json!({ "error": "unauthorized" })),
+            AppError::Unauthorized => {
+                (StatusCode::UNAUTHORIZED, json!({ "error": "unauthorized" }))
+            }
             AppError::RateLimited => (
                 StatusCode::TOO_MANY_REQUESTS,
                 json!({ "error": "rate_limited" }),
             ),
-            AppError::InsufficientFunds => {
-                (StatusCode::CONFLICT, json!({ "error": "insufficient_funds" }))
-            }
+            AppError::InsufficientFunds => (
+                StatusCode::CONFLICT,
+                json!({ "error": "insufficient_funds" }),
+            ),
             AppError::Db(e) => {
                 tracing::error!("db error: {e}");
                 (
