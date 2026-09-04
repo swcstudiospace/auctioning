@@ -1,0 +1,44 @@
+name: Bug report
+description: Something on the board, ledger, program, or site is wrong.
+labels: ["bug", "triage"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - backend (shuttle-auctioning)
+        - race engine / championship / featured
+        - ledger / RP / Whop
+        - program (Anchor)
+        - magicblock (ER)
+        - app (Leptos dApp)
+        - marketing (Next.js)
+        - seeder / tooling
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the endpoint or page, the wallet/handle (public data only), and timestamps in UTC.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      render: bash
+  - type: checkboxes
+    id: money
+    attributes:
+      label: RP impact
+      options:
+        - label: This bug changed an RP balance, rank, or on-chain receipt (treat as P1)

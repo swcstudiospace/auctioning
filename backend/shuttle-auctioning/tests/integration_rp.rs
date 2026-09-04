@@ -6,21 +6,11 @@
 //! The run RESETS the public schema at startup (drop + migrate), so point
 //! DATABASE_URL at a disposable database only.
 
-// The lib's modules are private (single deployable crate), so splice their
-// sources in. tests/inc/*.rs are generated copies of src/{ledger,catalog}.rs
-// with their `//!` headers rewritten to `//` (inner doc comments are illegal
-// mid-file). Regenerate with scripts/gen-integration-includes.sh if those
-// modules change shape.
-include!("inc/ledger.rs");
-include!("inc/catalog.rs");
-
-// Re-export the spliced modules' public items so the test body reads like
-// normal lib code.
-use catalog::{
+use shuttle_auctioning::catalog::{
     allocate_to_project, allocations_for, get_project, import_projects, list_projects,
     parse_import_payload,
 };
-use ledger::{
+use shuttle_auctioning::ledger::{
     claim_weekly, credit_paid, ensure_wallet, events_for, expire_due_lots, grant_free_lot,
     next_week_start, reconcile_free_rp_cache, RpSource,
 };

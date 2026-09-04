@@ -9,6 +9,17 @@ members = [
 
 [workspace.package]
 edition = "2021"
+license = "AGPL-3.0-only"
+repository = "https://github.com/swcstudiospace/auctioning"
 
 [profile.release]
 overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+# Leptos WASM: size over speed.
+[profile.release.package.leptos-auctioning]
+opt-level = "z"
+
+[profile.release.build-override]
+opt-level = 3

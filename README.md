@@ -33,6 +33,8 @@ SOON Stack is a **future migration path only** — nothing in this repo builds o
 
 ## Quick start
 
+`make help` lists every target; `make check` is the CI gate (fmt + clippy + tests).
+
 ```bash
 # Program tests (no validator needed for the pure-logic suites)
 cargo test -p auctioning
@@ -57,6 +59,23 @@ cd marketing && npm install && npm run dev
 Copy `.env.example` to `.env`. `AUTHORITY_KEYPAIR_PATH` is a filesystem path
 (default `./keys/auctioning-keypair.json`) — never commit keypair bytes. Keep
 `ON_CHAIN_ENABLED=false` until a real program id is deployed.
+
+## Auth & security
+
+- Wallet writes need a session: `GET /v1/auth/nonce` → Phantom `signMessage` →
+  `POST /v1/auth/verify` → `Authorization: Bearer …`. See `docs/RUNBOOK.md`.
+- Operator routes take `X-Auctioning-Operator: $OPERATOR_TOKEN`; machine
+  routes take `X-Auctioning-Ingest: $INGEST_SECRET`.
+- `APP_ENV=prod|staging` makes those secrets and `ALLOWED_ORIGINS` mandatory
+  at boot. `APP_ENV=dev` (default) keeps local development frictionless.
+
+## Business intelligence
+
+- `GET /v1/stats/overview` — platform pulse (projects, wallets, paid RP, 24h fuel, 7d supporters)
+- `GET /v1/projects/{handle}/stats` — one car: lifetime split, record (starts/wins/podiums), rank history
+- `GET /v1/wallets/me/history` — the signed-in wallet's ledger, allocations and active free-RP lots
+- `GET /v1/stats/revenue?days=30` — operator: paid RP by day (`$1 = 1 RP`)
+- SQL views `v_window_finals`, `v_wallet_daily`, `v_project_daily_fuel` for dashboards
 
 ## Race engine
 
@@ -100,7 +119,7 @@ framing. See `docs/LEGAL.md` and the `/legal` page of the marketing site.
 
 | Tool | Status |
 |---|---|
-| rustc / cargo | 1.96.0 |
+| rustc / cargo | stable (`rust-toolchain.toml`) |
 | wasm32-unknown-unknown | installed |
 | anchor / solana / shuttle / sqlx-cli / trunk | may be absent — `cargo test` still covers program + engine logic |
 

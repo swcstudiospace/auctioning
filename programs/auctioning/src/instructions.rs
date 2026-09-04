@@ -4,13 +4,83 @@ use anchor_lang::system_program;
 
 /// Initialize global config. One-time.
 pub fn initialize(ctx: Context<Initialize>, fee_bps: u16) -> Result<()> {
-    require!(fee_bps <= 5000, AuctioningError::FeeOutOfRange);
+    require!(
+        fee_bps <= Config::MAX_FEE_BPS,
+        AuctioningError::FeeOutOfRange
+    );
+    require_keys_eq!(
+        *ctx.accounts.fee_vault.owner,
+        system_program::ID,
+        AuctioningError::BadFeeVault
+    );
     let config = &mut ctx.accounts.config;
     config.authority = ctx.accounts.authority.key();
     config.fee_vault = ctx.accounts.fee_vault.key();
     config.fee_bps = fee_bps;
     config.bump = ctx.bumps.config;
+    config.paused = false;
+    config.reserved = [0; 63];
     Ok(())
+}
+
+/// Authority-only knobs. Each argument is optional so a single call can flip
+/// the circuit breaker without touching fees. Authority rotation is explicit:
+/// pass `new_authority` to hand the protocol to a multisig.
+pub fn update_config(
+    ctx: Context<UpdateConfig>,
+    fee_bps: Option<u16>,
+    paused: Option<bool>,
+    new_authority: Option<Pubkey>,
+) -> Result<()> {
+    let config = &mut ctx.accounts.config;
+    if let Some(bps) = fee_bps {
+        require!(bps <= Config::MAX_FEE_BPS, AuctioningError::FeeOutOfRange);
+        config.fee_bps = bps;
+    }
+    if let Some(p) = paused {
+        config.paused = p;
+    }
+    if let Some(vault) = ctx.accounts.new_fee_vault.as_ref() {
+        require_keys_eq!(
+            *vault.owner,
+            system_program::ID,
+            AuctioningError::BadFeeVault
+        );
+        config.fee_vault = vault.key();
+    }
+    if let Some(a) = new_authority {
+        require!(a != Pubkey::default(), AuctioningError::Unauthorized);
+        config.authority = a;
+    }
+    emit!(ConfigUpdated {
+        authority: config.authority,
+        fee_vault: config.fee_vault,
+        fee_bps: config.fee_bps,
+        paused: config.paused,
+    });
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct UpdateConfig<'info> {
+    #[account(
+        mut,
+        seeds = [Config::SEED.as_bytes()],
+        bump = config.bump,
+        has_one = authority @ AuctioningError::Unauthorized
+    )]
+    pub config: Account<'info, Config>,
+    pub authority: Signer<'info>,
+    /// CHECK: optional replacement fee vault; must be a system-owned wallet.
+    pub new_fee_vault: Option<UncheckedAccount<'info>>,
+}
+
+#[event]
+pub struct ConfigUpdated {
+    pub authority: Pubkey,
+    pub fee_vault: Pubkey,
+    pub fee_bps: u16,
+    pub paused: bool,
 }
 
 #[derive(Accounts)]
@@ -73,7 +143,9 @@ pub fn log_paid_rp(
     lamports_paid: u64,
     memo: String,
 ) -> Result<()> {
+    require!(!ctx.accounts.config.paused, AuctioningError::Paused);
     require!(lamports_paid > 0, AuctioningError::ZeroPayment);
+    require!(rp_amount > 0, AuctioningError::ZeroPayment);
     require!(memo.len() <= 64, AuctioningError::MemoTooLong);
     require_keys_eq!(ctx.accounts.fee_vault.key(), ctx.accounts.config.fee_vault);
 
@@ -184,6 +256,12 @@ pub struct RpLogged {
 /// that same pre-bump value for the PDA seed, matching the client derivation:
 ///   seeds = ["race", project.key(), race_id.to_le_bytes()]
 pub fn open_race(ctx: Context<OpenRace>) -> Result<()> {
+    require!(!ctx.accounts.config.paused, AuctioningError::Paused);
+    require_keys_eq!(
+        ctx.accounts.payer.key(),
+        ctx.accounts.project.owner,
+        AuctioningError::Unauthorized
+    );
     let race_id = ctx.accounts.project.race_nonce;
     let project = &mut ctx.accounts.project;
     project.race_nonce = race_id.checked_add(1).ok_or(AuctioningError::Overflow)?;
@@ -207,6 +285,8 @@ pub fn open_race(ctx: Context<OpenRace>) -> Result<()> {
 
 #[derive(Accounts)]
 pub struct OpenRace<'info> {
+    #[account(seeds = [Config::SEED.as_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, Config>>,
     #[account(mut)]
     pub project: Account<'info, Project>,
     #[account(
@@ -242,6 +322,7 @@ pub fn settle_race(ctx: Context<SettleRace>, results: Vec<RaceResult>) -> Result
         results.len() <= Race::MAX_RESULTS,
         AuctioningError::TooManyEntrants
     );
+    require!(valid_ranking(&results), AuctioningError::BadRanking);
     let race = &mut ctx.accounts.race;
     require!(
         race.status == Race::STATUS_OPEN,
@@ -264,6 +345,20 @@ pub fn settle_race(ctx: Context<SettleRace>, results: Vec<RaceResult>) -> Result
         race_id: race.race_id
     });
     Ok(())
+}
+
+/// Ranks must be exactly 0..n in order and entrants unique. Keeps the
+/// committed payload canonical so indexers never have to re-sort.
+pub fn valid_ranking(results: &[RaceResult]) -> bool {
+    for (i, r) in results.iter().enumerate() {
+        if r.rank as usize != i {
+            return false;
+        }
+        if results[..i].iter().any(|p| p.entrant == r.entrant) {
+            return false;
+        }
+    }
+    true
 }
 
 #[derive(Accounts)]

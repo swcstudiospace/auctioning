@@ -1,3 +1,4 @@
+#![allow(clippy::assertions_on_constants, clippy::int_plus_one)]
 use ::auctioning::{Config, Project, Race, RaceResult, RpReceipt};
 use anchor_lang::prelude::*;
 
@@ -79,7 +80,7 @@ mod pda_contract {
 
     #[test]
     fn space_constants_guard_against_regressions() {
-        assert_eq!(Config::SPACE, 8 + 32 + 32 + 2 + 1 + 64);
+        assert_eq!(Config::SPACE, 8 + 32 + 32 + 2 + 1 + 1 + 63);
         assert_eq!(Project::SPACE, 8 + 32 + 8 + 8 + 8 + 8 + (4 + 32) + 1);
         assert!(Race::SPACE >= 8 + 32 + 8 + 32 + 8 + 8 + (4 + Race::MAX_RESULTS * 42) + 1 + 1);
     }

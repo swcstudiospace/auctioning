@@ -24,6 +24,9 @@ pub struct WorkerConfig {
     pub authority_secret_b58: Option<String>,
 }
 
+/// Non-final snapshots older than this are deleted (final per window is kept).
+const SNAPSHOT_RETENTION_DAYS: i64 = 90;
+
 fn should_subscribe(er_ws: &str) -> bool {
     !er_ws.is_empty()
 }
@@ -187,10 +190,32 @@ async fn tick_calendar(db: &PgPool) {
         }
         Err(e) => tracing::warn!(error = %e, "list_windows failed"),
     }
+    housekeeping(db).await;
     match crate::narrative::mint_unposted_events(db, 20).await {
         Ok(n) if n > 0 => tracing::info!(events = n, "narrative drafts minted"),
         Ok(_) => {}
         Err(e) => tracing::warn!(error = %e, "mint_unposted_events failed"),
+    }
+}
+
+/// Hourly retention: expired auth rows and old non-final snapshots.
+async fn housekeeping(db: &PgPool) {
+    use std::sync::atomic::{AtomicI64, Ordering};
+    static LAST: AtomicI64 = AtomicI64::new(0);
+    let now = Utc::now().timestamp();
+    if now - LAST.load(Ordering::Relaxed) < 3600 {
+        return;
+    }
+    LAST.store(now, Ordering::Relaxed);
+    match crate::auth::prune_expired(db).await {
+        Ok(n) if n > 0 => tracing::info!(rows = n, "pruned expired auth rows"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "auth prune failed"),
+    }
+    match crate::race_engine::prune_snapshots(db, SNAPSHOT_RETENTION_DAYS).await {
+        Ok(n) if n > 0 => tracing::info!(rows = n, "pruned old rank snapshots"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "snapshot prune failed"),
     }
 }
 

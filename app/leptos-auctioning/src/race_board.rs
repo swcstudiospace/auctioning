@@ -70,12 +70,19 @@ fn type_key(t: &str) -> String {
     t.trim().to_ascii_uppercase()
 }
 
+fn is_open(status: &str) -> bool {
+    status.eq_ignore_ascii_case("live") || status.eq_ignore_ascii_case("scheduled")
+}
+
 fn is_sprint(t: &str) -> bool {
     matches!(type_key(t).as_str(), "GREEN_FLAG" | "SPRINT" | "PACE_LAP")
 }
 
 fn is_gp(t: &str) -> bool {
-    matches!(type_key(t).as_str(), "GRAND_TOUR" | "GRAND_PRIX")
+    matches!(
+        type_key(t).as_str(),
+        "GRAND_TOUR" | "GRAND_PRIX" | "SECTOR_SCRAP"
+    )
 }
 
 fn is_special(t: &str) -> bool {
@@ -159,10 +166,9 @@ fn avatar_tone(handle: &str) -> &'static str {
         "letter-avatar tone-3",
         "letter-avatar tone-4",
     ];
-    let h = handle
-        .as_bytes()
-        .iter()
-        .fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(u32::from(*b)));
+    let h = handle.as_bytes().iter().fold(0u32, |acc, b| {
+        acc.wrapping_mul(31).wrapping_add(u32::from(*b))
+    });
     TONES[h as usize % TONES.len()]
 }
 
@@ -233,20 +239,23 @@ fn extract_because(v: &serde_json::Value) -> Option<String> {
 fn pick_sprint(windows: &[RaceWindow]) -> Option<&RaceWindow> {
     windows
         .iter()
-        .find(|w| is_sprint(&w.race_type) && is_live(&w.status) && parse_ms(&w.ends_at).is_some())
+        .find(|w| is_sprint(&w.race_type) && is_live(&w.status))
         .or_else(|| {
             windows
                 .iter()
-                .find(|w| is_sprint(&w.race_type) && parse_ms(&w.ends_at).is_some())
+                .find(|w| is_sprint(&w.race_type) && is_open(&w.status))
         })
 }
 
 fn pick_grand_tour(windows: &[RaceWindow]) -> Option<&RaceWindow> {
     windows
         .iter()
-        .find(|w| type_key(&w.race_type) == "GRAND_TOUR" && is_live(&w.status))
-        .or_else(|| windows.iter().find(|w| type_key(&w.race_type) == "GRAND_TOUR"))
-        .or_else(|| windows.iter().find(|w| is_gp(&w.race_type) && is_live(&w.status)))
+        .find(|w| is_gp(&w.race_type) && is_live(&w.status))
+        .or_else(|| {
+            windows
+                .iter()
+                .find(|w| is_gp(&w.race_type) && is_open(&w.status))
+        })
 }
 
 fn pick_live_gp(windows: &[RaceWindow]) -> Option<&RaceWindow> {

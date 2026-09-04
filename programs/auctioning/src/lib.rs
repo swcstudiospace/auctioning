@@ -16,6 +16,16 @@ pub mod auctioning {
         crate::instructions::initialize(ctx, fee_bps)
     }
 
+    /// Authority-only: fees, fee vault, pause flag, authority rotation.
+    pub fn update_config(
+        ctx: Context<UpdateConfig>,
+        fee_bps: Option<u16>,
+        paused: Option<bool>,
+        new_authority: Option<Pubkey>,
+    ) -> Result<()> {
+        crate::instructions::update_config(ctx, fee_bps, paused, new_authority)
+    }
+
     pub fn register_project(ctx: Context<RegisterProject>, handle: String) -> Result<()> {
         crate::instructions::register_project(ctx, handle)
     }

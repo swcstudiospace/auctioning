@@ -2,14 +2,201 @@ name: ci
 
 "on":
   push:
+    branches: [main]
   pull_request:
+  merge_group:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  SQLX_OFFLINE: "true"
 
 jobs:
-  test:
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      marketing: ${{ steps.filter.outputs.marketing }}
+      seeder: ${{ steps.filter.outputs.seeder }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'Cargo.*'
+              - 'rust-toolchain.toml'
+              - 'rustfmt.toml'
+              - 'clippy.toml'
+              - 'deny.toml'
+              - 'programs/**'
+              - 'backend/**'
+              - 'magicblock/**'
+              - 'app/**'
+              - '.github/workflows/ci.yml'
+            marketing:
+              - 'marketing/**'
+              - '.github/workflows/ci.yml'
+            seeder:
+              - 'tools/seeder/**'
+              - '.github/workflows/ci.yml'
+
+  rust-fmt:
+    name: rust · fmt
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test -p auctioning
-      - run: cargo test -p auctioning-magicblock
-      - run: cargo test -p shuttle-auctioning
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  rust-clippy:
+    name: rust · clippy
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # ambiguous_glob_reexports comes from Anchor's #[program] expansion (tracked in CHANGELOG).
+      - run: >-
+          cargo clippy --workspace --exclude leptos-auctioning --all-targets --
+          -D warnings -A ambiguous_glob_reexports
+
+  rust-test:
+    name: rust · test (${{ matrix.crate }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [auctioning, auctioning-magicblock, shuttle-auctioning]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p ${{ matrix.crate }} --no-fail-fast
+
+  rust-db-smoke:
+    name: rust · postgres smoke
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: auctioning
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/auctioning
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p shuttle-auctioning --test integration_rp --no-fail-fast
+      - run: cargo test -p shuttle-auctioning --test http_auth --no-fail-fast
+      - run: cargo test -p shuttle-auctioning --features sqlx-test --test smoke_db --no-fail-fast
+
+  rust-wasm:
+    name: rust · leptos wasm check
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p leptos-auctioning --target wasm32-unknown-unknown
+
+  rust-deny:
+    name: rust · cargo-deny
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans sources licenses
+
+  marketing:
+    name: marketing · lint + typecheck + build
+    needs: changes
+    if: needs.changes.outputs.marketing == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: marketing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: marketing/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          AUCTIONING_INTERNAL_API_URL: http://127.0.0.1:8000
+
+  seeder:
+    name: seeder · dry-run
+    needs: changes
+    if: needs.changes.outputs.seeder == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m py_compile tools/seeder/outbid_seed.py
+      - run: python tools/seeder/outbid_seed.py --snapshot tools/seeder/seed.sample.json
+
+  ci-ok:
+    name: ci · all green
+    if: always()
+    needs:
+      - rust-fmt
+      - rust-clippy
+      - rust-test
+      - rust-db-smoke
+      - rust-wasm
+      - rust-deny
+      - marketing
+      - seeder
+    runs-on: ubuntu-latest
+    steps:
+      - name: verify no job failed
+        run: |
+          echo '${{ toJSON(needs) }}' | tee needs.json
+          if grep -Eq '"result": *"(failure|cancelled)"' needs.json; then
+            echo "::error::a required job failed"; exit 1
+          fi

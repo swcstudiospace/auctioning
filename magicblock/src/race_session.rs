@@ -243,7 +243,7 @@ pub mod settlement {
 /// Parse a base58 keypair from a secret string (used by the Shuttle worker).
 pub fn load_authority(secret_b58: &str) -> Result<Keypair> {
     let bytes = bs58::decode(secret_b58).into_vec().context("bad base58")?;
-    let kp = Keypair::from_bytes(&bytes).context("bad keypair bytes")?;
+    let kp = Keypair::try_from(bytes.as_slice()).context("bad keypair bytes")?;
     Ok(kp)
 }
 
@@ -388,7 +388,6 @@ pub fn parse_tick_notification(text: &str) -> Option<TickEnvelope> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_sdk::signature::Signer;
 
     fn test_session() -> RaceSession {
         RaceSession::new(

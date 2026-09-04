@@ -10,7 +10,6 @@ use crate::error::{AppError, AppResult};
 use crate::narrative::{LlmEnricher, LlmError, NarrativeChannel, NarrativeInput};
 use anyhow;
 use axum::extract::{Query, State};
-use axum::http::HeaderMap;
 use axum::Json;
 use chrono::{Duration, Utc};
 use serde::Deserialize;
@@ -326,38 +325,10 @@ pub async fn polish(
     Ok(body)
 }
 
-fn check_ingest(state: &crate::AppState, headers: &HeaderMap) -> AppResult<()> {
-    match &state.cfg.ingest_secret {
-        None => Ok(()),
-        Some(secret) => {
-            let provided = headers
-                .get("x-auctioning-ingest")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or_default();
-            if constant_time_eq(provided.as_bytes(), secret.as_bytes()) {
-                Ok(())
-            } else {
-                Err(AppError::Unauthorized)
-            }
-        }
-    }
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
 pub async fn login_handler(
     State(state): State<crate::AppState>,
-    headers: HeaderMap,
+    _op: crate::auth::Operator,
 ) -> AppResult<Json<serde_json::Value>> {
-    check_ingest(&state, &headers)?;
     let cfg = state.cfg.supergrok();
     if !cfg.configured() {
         return Err(AppError::BadRequest("oauth not configured".into()));
@@ -388,6 +359,7 @@ pub async fn callback_handler(
 
 pub async fn status_handler(
     State(state): State<crate::AppState>,
+    _op: crate::auth::Operator,
 ) -> AppResult<Json<serde_json::Value>> {
     Ok(Json(json!({ "logged_in": logged_in(&state.db).await? })))
 }

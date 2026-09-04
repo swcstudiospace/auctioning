@@ -66,11 +66,8 @@ impl Phantom {
     /// session binding). Returns the base58 signature.
     pub async fn sign_message(wallet: &str, message: &str) -> Result<String, String> {
         let script = format!(
-            "(async function(){{const p=window.phantom?.solana||window.solana;\\
-             const enc=new TextEncoder();\\
-             const r=await p.signMessage(enc.encode({message:?}),'utf8');\\
-             const bs58=(await import('bs58')).default;\\
-             return bs58.encode(r.signature);}})()"
+            "(async function(){{const r=await window.auctioning.signMessageUtf8({message:?});\\
+             return window.auctioning.base58(r.signature);}})()"
         );
         // `wallet` is bound into the session context server-side; the message
         // itself carries the challenge.
@@ -185,17 +182,142 @@ pub struct GridSlot {
     pub hover_footer: String,
 }
 
+// ---------------------------------------------------------------------------
+// Wallet session (Sign-In-With-Solana). The backend binds every RP write to
+// the wallet that signed the nonce; the bearer token lives in localStorage.
+// ---------------------------------------------------------------------------
+
+pub mod session {
+    use std::cell::RefCell;
+
+    const STORAGE_KEY: &str = "auctioning.session";
+
+    thread_local! {
+        static TOKEN: RefCell<Option<String>> = const { RefCell::new(None) };
+    }
+
+    pub fn token() -> Option<String> {
+        TOKEN.with(|t| t.borrow().clone())
+    }
+
+    pub fn set(token: Option<String>) {
+        TOKEN.with(|t| *t.borrow_mut() = token.clone());
+        let js = match token {
+            Some(tok) => format!("localStorage.setItem({STORAGE_KEY:?},{tok:?})"),
+            None => format!("localStorage.removeItem({STORAGE_KEY:?})"),
+        };
+        let _ = js_sys::eval(&js);
+    }
+
+    /// Restore a persisted token (call once at boot).
+    pub fn restore() -> Option<String> {
+        let tok = js_sys::eval(&format!("localStorage.getItem({STORAGE_KEY:?})"))
+            .ok()
+            .and_then(|v| v.as_string())
+            .filter(|s| !s.is_empty());
+        TOKEN.with(|t| *t.borrow_mut() = tok.clone());
+        tok
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Nonce {
+        nonce: String,
+        message: String,
+    }
+
+    #[derive(serde::Serialize)]
+    struct Verify<'a> {
+        wallet: &'a str,
+        nonce: &'a str,
+        signature: &'a str,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Grant {
+        token: String,
+    }
+
+    /// nonce → Phantom signMessage → verify → bearer token.
+    pub async fn sign_in(wallet: &str) -> Result<(), String> {
+        let resp = super::api_get(&format!("/v1/auth/nonce?wallet={wallet}")).await?;
+        if !resp.status().is_success() {
+            return Err(format!("nonce failed: {}", resp.status()));
+        }
+        let nonce: Nonce = resp.json().await.map_err(|e| e.to_string())?;
+        let signature = super::Phantom::sign_message(wallet, &nonce.message).await?;
+        let resp = super::api_post(
+            "/v1/auth/verify",
+            &Verify {
+                wallet,
+                nonce: &nonce.nonce,
+                signature: &signature,
+            },
+        )
+        .await?;
+        if !resp.status().is_success() {
+            return Err(format!("sign-in rejected: {}", resp.status()));
+        }
+        let grant: Grant = resp.json().await.map_err(|e| e.to_string())?;
+        set(Some(grant.token));
+        Ok(())
+    }
+
+    /// True when the stored token still maps to `wallet` on the server.
+    pub async fn is_valid_for(wallet: &str) -> bool {
+        if token().is_none() {
+            return false;
+        }
+        match super::api_get("/v1/auth/me").await {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| {
+                    v.get("wallet")
+                        .and_then(|w| w.as_str())
+                        .map(|w| w == wallet)
+                })
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+
+    /// Ensure a session for `wallet`, signing in only when needed.
+    pub async fn ensure(wallet: &str) -> Result<(), String> {
+        if is_valid_for(wallet).await {
+            return Ok(());
+        }
+        set(None);
+        sign_in(wallet).await
+    }
+
+    pub async fn sign_out() {
+        if token().is_some() {
+            let _ = super::api_post("/v1/auth/logout", &serde_json::json!({})).await;
+        }
+        set(None);
+    }
+}
+
+fn with_auth(req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    match session::token() {
+        Some(tok) => req.bearer_auth(tok),
+        None => req,
+    }
+}
+
 pub(crate) async fn api_get(path: &str) -> Result<reqwest::Response, String> {
-    reqwest::Client::new()
-        .get(format!("{}{path}", api_base()))
+    with_auth(reqwest::Client::new().get(format!("{}{path}", api_base())))
         .send()
         .await
         .map_err(|e| format!("network error: {e}"))
 }
 
-async fn api_post<T: serde::Serialize>(path: &str, body: &T) -> Result<reqwest::Response, String> {
-    reqwest::Client::new()
-        .post(format!("{}{path}", api_base()))
+pub(crate) async fn api_post<T: serde::Serialize>(
+    path: &str,
+    body: &T,
+) -> Result<reqwest::Response, String> {
+    with_auth(reqwest::Client::new().post(format!("{}{path}", api_base())))
         .json(body)
         .send()
         .await
@@ -222,6 +344,7 @@ fn project_handle_from_location() -> Option<String> {
 #[component]
 pub fn App() -> impl IntoView {
     let wallet = RwSignal::new(None::<String>);
+    session::restore();
     let rp = RwSignal::new(None::<RpView>);
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
@@ -259,7 +382,16 @@ pub fn App() -> impl IntoView {
                 return;
             }
             match Phantom::connect().await {
-                Ok(pk) => wallet.set(Some(pk)),
+                Ok(pk) => match session::ensure(&pk).await {
+                    Ok(()) => {
+                        wallet.set(Some(pk));
+                        notice.set(Some("Signed in — wallet verified by signature.".into()));
+                    }
+                    Err(e) => {
+                        session::set(None);
+                        error.set(Some(format!("sign-in failed: {e}")));
+                    }
+                },
                 Err(e) => error.set(Some(e)),
             }
             busy.set(false);
@@ -358,7 +490,6 @@ pub fn App() -> impl IntoView {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ActiveCard {
     pub slug: String,
@@ -374,7 +505,9 @@ fn EventBanner() -> impl IntoView {
             if let Ok(resp) = api_get("/v1/events/active").await {
                 if resp.status().is_success() {
                     #[derive(Deserialize)]
-                    struct Wrap { active: Option<ActiveCard> }
+                    struct Wrap {
+                        active: Option<ActiveCard>,
+                    }
                     if let Ok(w) = resp.json::<Wrap>().await {
                         card.set(w.active);
                     }
@@ -400,7 +533,6 @@ fn EventBanner() -> impl IntoView {
         </section>
     }
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TapePost {
@@ -685,7 +817,6 @@ fn ProjectPage(
     }
 }
 
-
 async fn refresh_rp(addr: &str, rp: RwSignal<Option<RpView>>, err: &RwSignal<Option<String>>) {
     match api_get(&format!("/v1/rp/{addr}")).await {
         Ok(resp) if resp.status().is_success() => {
@@ -840,7 +971,7 @@ fn Web3Actions(wallet: RwSignal<Option<String>>) -> impl IntoView {
                         } else {
                             match Phantom::send_transaction(&addr, &tx_b64).await {
                                 Ok(sig) => {
-                                    let pda = prep
+                                    let _pda = prep
                                         .get("project_pda")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("");

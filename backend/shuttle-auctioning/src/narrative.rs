@@ -151,7 +151,11 @@ impl NarrativeInput {
             rp_delta,
             window_slug: window.map(|w| w.slug.clone()),
             window_name: window.map(|w| w.name.clone()),
-            lifetime_rank: row.payload.get("lifetime_rank").and_then(|v| v.as_i64()).map(|n| n as i32),
+            lifetime_rank: row
+                .payload
+                .get("lifetime_rank")
+                .and_then(|v| v.as_i64())
+                .map(|n| n as i32),
             pace_pct: row.payload.get("pace_pct").and_then(|v| v.as_i64()),
             burst_rp: row.payload.get("burst_rp").and_then(|v| v.as_i64()),
             paid_rp: row.payload.get("paid_rp").and_then(|v| v.as_i64()),
@@ -907,7 +911,10 @@ mod tests {
             ..input.clone()
         };
         let recap2 = how_they_did_it(&no_burst);
-        assert!(!recap2.contains("burst"), "missing burst must omit the word: {recap2}");
+        assert!(
+            !recap2.contains("burst"),
+            "missing burst must omit the word: {recap2}"
+        );
         assert!(recap2.contains("12 RP"), "falls back to rp_delta: {recap2}");
         assert!(!recap2.to_lowercase().contains("launch"));
         assert!(!recap2.to_lowercase().contains("funding"));

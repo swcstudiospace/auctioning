@@ -42,7 +42,10 @@ pub struct OperatorEvent {
 }
 
 /// Highest-bps live card overlapping `now` (no stacking).
-pub async fn active_card(db: &PgPool, now: DateTime<Utc>) -> Result<Option<OperatorEvent>, sqlx::Error> {
+pub async fn active_card(
+    db: &PgPool,
+    now: DateTime<Utc>,
+) -> Result<Option<OperatorEvent>, sqlx::Error> {
     sqlx::query_as::<_, OperatorEvent>(
         r#"
         SELECT id, slug, name, multiplier_bps, starts_at, ends_at, tag, window_id
@@ -57,46 +60,73 @@ pub async fn active_card(db: &PgPool, now: DateTime<Utc>) -> Result<Option<Opera
     .await
 }
 
+#[derive(Debug, Clone)]
+pub struct CardCredit {
+    pub ledger: WalletLedger,
+    /// True when `tx_id` had already been credited; nothing was written.
+    pub duplicate: bool,
+    pub bonus_rp: i64,
+}
+
 /// Paid 1:1, then Afterburner (or whichever card is live) as EventMultiplier.
+///
+/// Idempotent on `tx_id`: concurrent deliveries of the same payment serialise
+/// on a transaction-scoped advisory lock, so the paid row (unique tx_id) and
+/// the bonus lot are written at most once.
 pub async fn credit_paid_with_card(
     db: &PgPool,
     wallet: &str,
     paid_rp: i64,
     reason: &str,
     tx_id: Option<&str>,
-) -> Result<WalletLedger, sqlx::Error> {
-    let before = if let Some(id) = tx_id.filter(|s| !s.is_empty()) {
-        sqlx::query_scalar::<_, i32>("SELECT 1 FROM ledger_events WHERE tx_id = $1 LIMIT 1")
+) -> Result<CardCredit, sqlx::Error> {
+    let tx_id = tx_id.filter(|s| !s.is_empty());
+    let mut guard = db.begin().await?;
+    if let Some(id) = tx_id {
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
             .bind(id)
-            .fetch_optional(db)
-            .await?
-    } else {
-        None
-    };
-
-    let ledger = ledger::credit_paid(db, wallet, paid_rp, reason, tx_id).await?;
-    if before.is_some() {
-        return Ok(ledger);
+            .execute(&mut *guard)
+            .await?;
+        let seen: Option<i32> =
+            sqlx::query_scalar("SELECT 1 FROM ledger_events WHERE tx_id = $1 LIMIT 1")
+                .bind(id)
+                .fetch_optional(&mut *guard)
+                .await?;
+        if seen.is_some() {
+            let ledger = ledger::ensure_wallet(db, wallet).await?;
+            guard.rollback().await?;
+            return Ok(CardCredit {
+                ledger,
+                duplicate: true,
+                bonus_rp: 0,
+            });
+        }
     }
 
-    let Some(card) = active_card(db, Utc::now()).await? else {
-        return Ok(ledger);
-    };
-    let (_, bonus) = split_purchase(paid_rp, card.multiplier_bps);
-    if bonus <= 0 {
-        return Ok(ledger);
+    let mut ledger = ledger::credit_paid(db, wallet, paid_rp, reason, tx_id).await?;
+    let mut bonus_rp = 0;
+    if let Some(card) = active_card(db, Utc::now()).await? {
+        let (_, bonus) = split_purchase(paid_rp, card.multiplier_bps);
+        if bonus > 0 {
+            let expires = card.ends_at.max(next_week_start(Utc::now()));
+            ledger = ledger::grant_free_lot(
+                db,
+                wallet,
+                bonus,
+                RpSource::EventMultiplier,
+                &format!("event:{}", card.slug),
+                expires,
+            )
+            .await?;
+            bonus_rp = bonus;
+        }
     }
-
-    let expires = card.ends_at.max(next_week_start(Utc::now()));
-    ledger::grant_free_lot(
-        db,
-        wallet,
-        bonus,
-        RpSource::EventMultiplier,
-        &format!("event:{}", card.slug),
-        expires,
-    )
-    .await
+    guard.commit().await?;
+    Ok(CardCredit {
+        ledger,
+        duplicate: false,
+        bonus_rp,
+    })
 }
 
 /// Open Afterburner for `duration` from now. Idempotent on slug+open overlap:

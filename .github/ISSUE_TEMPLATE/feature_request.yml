@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a race format, event card, endpoint, or UI change.
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't a business, supporter, or operator do today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+    validations:
+      required: true
+  - type: textarea
+    id: rp
+    attributes:
+      label: RP model check
+      description: >-
+        Does this keep free RP off-chain and non-cashable, paid RP at $1 = 1 RP,
+        and rank derived only from project_allocations? If not, explain.
+    validations:
+      required: true

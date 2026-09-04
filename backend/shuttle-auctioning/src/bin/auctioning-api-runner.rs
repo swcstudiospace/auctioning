@@ -9,9 +9,7 @@ async fn main() {
 
     let url = std::env::var("DATABASE_URL").expect("DATABASE_URL");
     let bind = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8000".into());
-    let pool = sqlx::PgPool::connect(&url)
-        .await
-        .expect("postgres connect");
+    let pool = sqlx::PgPool::connect(&url).await.expect("postgres connect");
     let cfg = shuttle_auctioning::config::AppConfig::from_env();
     let router = shuttle_auctioning::build_app(pool, cfg).await;
     let listener = tokio::net::TcpListener::bind(&bind)

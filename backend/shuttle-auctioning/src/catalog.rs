@@ -280,11 +280,7 @@ fn parse_site_url(raw: &str) -> Result<(String, String), String> {
     if hostport.contains('@') {
         return Err("url must not include credentials".into());
     }
-    let host_only = hostport
-        .split(':')
-        .next()
-        .unwrap_or("")
-        .trim_matches('.');
+    let host_only = hostport.split(':').next().unwrap_or("").trim_matches('.');
     let host = host_only.strip_prefix("www.").unwrap_or(host_only);
     if host.is_empty() || !host.contains('.') || host.len() > 253 {
         return Err("url host looks invalid".into());
@@ -312,8 +308,8 @@ fn parse_site_url(raw: &str) -> Result<(String, String), String> {
 }
 
 pub async fn submit_site(db: &PgPool, req: SubmitSite) -> Result<SubmitOutcome, sqlx::Error> {
-    let (canonical, host) = parse_site_url(&req.url)
-        .map_err(|e| sqlx::Error::Configuration(e.into()))?;
+    let (canonical, host) =
+        parse_site_url(&req.url).map_err(|e| sqlx::Error::Configuration(e.into()))?;
 
     let item = ImportProject {
         stable_id: format!("manual:{host}"),
@@ -736,6 +732,7 @@ pub async fn allocate_to_project(
     .await?;
 
     tx.commit().await?;
+    crate::race_engine::invalidate_lifetime_cache();
     Ok(Some(SupportOutcome {
         allocation,
         from_free: breakdown.from_free,

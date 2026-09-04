@@ -37,3 +37,10 @@ marketing/node_modules/
 .idea/
 .vscode/
 *.swp
+
+# Agent / scratch notes (not source)
+/issues/
+
+# Local logs
+/logs/
+*.log

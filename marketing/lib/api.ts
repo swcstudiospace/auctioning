@@ -176,10 +176,21 @@ export async function getRp(wallet: string): Promise<ApiResult<RpView>> {
   return apiFetch<RpView>(`/v1/rp/${encodeURIComponent(wallet)}`);
 }
 
+function bearer(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const token = window.localStorage.getItem("auctioning.session");
+    return token ? { authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Requires a session for `wallet` (see lib/auth.ts). */
 export async function claimWeekly(wallet: string): Promise<ApiResult<{ claimed?: boolean; amount?: number }>> {
   return apiFetch(`/v1/rp/claim-weekly`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...bearer() },
     body: JSON.stringify({ wallet }),
   });
 }
@@ -190,9 +201,56 @@ export async function supportProject(
 ): Promise<ApiResult<SupportOutcome>> {
   return apiFetch(`/v1/projects/${encodeURIComponent(handle)}/support`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...bearer() },
     body: JSON.stringify(body),
   });
+}
+
+export type ProjectStats = {
+  project: Project;
+  lifetime: {
+    race_rp: number;
+    paid_rp: number;
+    community_rp: number;
+    supporters: number;
+    allocations: number;
+    first_fuel_at: string | null;
+    last_fuel_at: string | null;
+  };
+  paid_share_pct: number | null;
+  record: { starts: number; wins: number; podiums: number; best_rank: number | null };
+  finishes: { window_slug: string; race_type: string; rank: number; race_rp: number; ends_at: string }[];
+  rank_history: {
+    window_slug: string;
+    race_type: string;
+    snapshot_at: string;
+    rank: number;
+    race_rp: number;
+    velocity: number;
+    momentum: number;
+    paid_rp: number;
+    community_rp: number;
+  }[];
+};
+
+export async function getProjectStats(handle: string): Promise<ApiResult<ProjectStats>> {
+  return apiFetch<ProjectStats>(`/v1/projects/${encodeURIComponent(handle)}/stats`);
+}
+
+export type Overview = {
+  projects: number;
+  wallets: number;
+  paid_rp_total: number;
+  free_rp_active: number;
+  allocations_24h: number;
+  race_rp_24h: number;
+  unique_supporters_7d: number;
+  paid_rp_7d: number;
+  live_windows: number;
+};
+
+export async function getOverview(): Promise<ApiResult<{ overview: Overview }>> {
+  return apiFetch<{ overview: Overview }>("/v1/stats/overview");
 }
 
 export async function recordClick(handle: string): Promise<void> {

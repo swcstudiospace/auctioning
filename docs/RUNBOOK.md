@@ -41,23 +41,47 @@ shuttle deploy
 
 Secrets (Secrets.toml / `shuttle secret set`):
 
-| Key | Meaning |
-|---|---|
-| WHOP_API_KEY | server-side membership checks |
-| WHOP_WEBHOOK_SECRET | HMAC verify of Whop webhooks |
-| WEEKLY_FREE_RP | stipend size (default 100) |
-| PROGRAM_ID | deployed program id (base58) |
-| MAINNET_RPC | Helius/Triton endpoint preferred over public RPC |
-| ER_RPC / ER_WS | MagicBlock ephemeral rollup HTTP + websocket |
-| AUTHORITY_SECRET | backend race-settle keypair (base58). Prefer Vault in prod. |
-| MAX_RACE_SECS | forced settle window (default 300) |
-| INGEST_SECRET | shared secret for earn/import endpoints |
-| SUPERGROK_REDIRECT_URI | PKCE callback (`/v1/oauth/supergrok/callback`); no client secret |
+| Key | Required outside dev | Meaning |
+|---|---|---|
+| APP_ENV | yes (`prod` / `staging`) | Anything else is `dev`. Outside dev the service refuses to boot with open gates. |
+| APP_DOMAIN | no | Shown in the wallet sign-in message (default `auctioning.lol`) |
+| ALLOWED_ORIGINS | yes | Comma-separated exact origins for CORS, e.g. `https://auctioning.lol,https://app.auctioning.lol` |
+| INGEST_SECRET | yes (≥16 chars) | Machine gate: `/v1/rp/earn`, `/v1/projects/import`, ER ticks, event cards |
+| OPERATOR_TOKEN | yes (≥16 chars) | Human gate: snapshots, narrate, narrative queue/approve, OAuth login, `/v1/stats/revenue`, race open/settle mirror |
+| WHOP_WEBHOOK_SECRET | yes | HMAC verify of Whop webhooks |
+| WHOP_API_KEY | no | server-side membership checks |
+| WHOP_AMOUNT_UNIT | no | `dollars` (default, 19.9 = $19.90) or `cents`. Confirm against a real delivery in `whop_webhook_log` before launch. |
+| WEEKLY_FREE_RP | no | stipend size (default 50) |
+| RATE_LIMIT_PER_MIN | no | per-IP budget on write endpoints (default 60; auth + submit use min(…,30)) |
+| PROGRAM_ID | no | deployed program id (base58) |
+| MAINNET_RPC | no | Helius/Triton endpoint preferred over public RPC |
+| ER_RPC / ER_WS | no | MagicBlock ephemeral rollup HTTP + websocket |
+| AUTHORITY_SECRET | no | backend race-settle keypair (base58). Prefer Vault in prod. |
+| MAX_RACE_SECS | no | forced settle window (default 300) |
+| AUTH_DEV_BYPASS | dev only | `true` lets `X-Auctioning-Dev-Wallet` stand in for a session (curl/seeding) |
+| SUPERGROK_REDIRECT_URI | no | PKCE callback (`/v1/oauth/supergrok/callback`); no client secret |
 
 Whop dashboard: point webhooks at `https://<shuttle-url>/v1/whop/webhook`.
 
-Boot behaviour: migrations 0001–0006 run automatically; content seeding,
-expiry/reconciliation sweeps, and the race worker start on every boot.
+Boot behaviour: `AppConfig::validate()` runs first (a bad prod config panics
+with every problem listed); migrations 0001–0009 run automatically; content
+seeding, expiry/reconciliation sweeps, and the race worker start on every
+boot. `GET /healthz` is liveness; `GET /readyz` probes the database and
+reports the migration version.
+
+### Wallet sessions (Sign-In-With-Solana)
+
+Every RP write is bound to a wallet session, never to a `wallet` field in the
+body:
+
+1. `GET /v1/auth/nonce?wallet=<pubkey>` → `{nonce, message, expires_at}` (10 min)
+2. Phantom `signMessage(message)` → base58 signature
+3. `POST /v1/auth/verify {wallet, nonce, signature}` → `{token, expires_at}` (7 days)
+4. Send `Authorization: Bearer <token>` on `claim-weekly`, `spend`, `support`,
+   `content/read`, `wallets/me/history`, `auth/me`, `auth/logout`.
+
+Only `sha256(token)` is stored (`auth_sessions`). A body `wallet` that
+disagrees with the session is a 403.
 Empty `ER_WS` keeps the worker on ping-only; set it to arm tick subscribe.
 
 ## 3. Local Postgres smoke test
@@ -86,11 +110,48 @@ support a project (409 when balance insufficient).
 
 ## 5. Marketing site (Vercel)
 
+The site is Next.js 15 (App Router) under `marketing/`. It does **not** query
+Postgres. Rank/news/live call `/v1/*`; Next rewrites those to Shuttle.
+
+Vercel project `swcstudiospace/auctioning`:
+
+- Root Directory = `marketing`
+- Framework = **Next.js** (not Other — Other served `public/` and 404'd)
+- Deploy from the **repo root** (`vercel deploy --prod`). Do not pass
+  `./marketing` as the CLI path while Root Directory is already `marketing`
+  (that resolves to `marketing/marketing`).
+
 ```bash
-cd marketing && npm ci && vercel deploy --prod
+# from repo root, after `vercel link --project auctioning`
+vercel deploy --prod --yes
 ```
 
-Static export; no server functions. Keep `/legal/` consistent with docs/LEGAL.md.
+Env vars this Next app actually reads (Production + Preview + Development):
+
+| Name | Where | Value |
+|---|---|---|
+| `AUCTIONING_INTERNAL_API_URL` | server + rewrites | Public Shuttle URL, e.g. `https://<project>.shuttle.app` |
+| `NEXT_PUBLIC_API_URL` | browser | Leave empty so the browser uses same-origin `/v1` |
+| `NEXT_PUBLIC_WHOP_CHECKOUT_URL` | browser | Only if a real Whop checkout exists; never invent |
+
+`DATABASE_URL` / Solana / Whop webhook secrets belong on **Shuttle**, not on
+this Next project. Copying the root `.env.example` into Vercel does not wire
+the catalog.
+
+### Supabase
+
+Do not add `@supabase/supabase-js` to `marketing/`. Catalog, RP lots, and races
+live in Shuttle (sqlx + `shuttle-shared-db`). A Next/Supabase client would
+bypass that ledger.
+
+Supabase **can** host Postgres for `auctioning-api-runner` (`DATABASE_URL` →
+sqlx `PgPool`). Use the **session / direct** string (port 5432) for sqlx and
+`sqlx migrate`. Transaction-mode Supavisor (`:6543`) breaks sqlx prepared
+statements. Production Shuttle still uses `#[shuttle_shared_db::Postgres]`
+unless that macro is replaced with an env-backed pool. RLS on Supabase is
+irrelevant while the only consumer is the Rust API (service connection).
+
+Keep `/legal/` consistent with docs/LEGAL.md.
 
 ## 6. Seed projects from outbid.lol
 
@@ -117,9 +178,13 @@ Imports are idempotent upserts keyed by `stable_id` (`outbid:<id>` convention).
 
 ## 8. Operational checklist before public launch
 
-- [ ] Lock CORS to app origin (backend lib.rs CorsLayer::permissive → specific)
-- [ ] Rotate INGEST_SECRET + require it in prod (dev mode is open by design)
-- [ ] Authority keypair out of env, into Vault/KMS
-- [ ] Rate-limit /healthz-less public endpoints at edge (Shuttle has none built-in)
+- [x] CORS locked to `ALLOWED_ORIGINS` (permissive only in `APP_ENV=dev`)
+- [x] `INGEST_SECRET`, `OPERATOR_TOKEN`, `WHOP_WEBHOOK_SECRET` required outside dev (boot refuses otherwise)
+- [x] Wallet-bound sessions on every RP write; operator token on admin routes
+- [x] Per-IP rate limits, 1 MiB body cap, 20 s request timeout, `x-request-id` on every response
+- [x] Whop deliveries logged verbatim (`whop_webhook_log`), idempotent on payment id
+- [ ] Set `APP_ENV=prod` and `WHOP_AMOUNT_UNIT` after confirming one real webhook in `whop_webhook_log`
+- [ ] Authority keypair out of env, into Vault/KMS; program upgrade authority to a Squads multisig
 - [ ] Lawyer review: docs/LEGAL.md + /legal page + Whop flow
 - [ ] Backup policy for Postgres (Shuttle shared DB snapshots)
+- [ ] Rotate `OPERATOR_TOKEN` / `INGEST_SECRET` on a schedule; both are plain shared secrets

@@ -52,7 +52,7 @@ impl RpSource {
     }
 }
 
-#[derive(Debug, sqlx::FromRow, serde::Serialize)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct WalletLedger {
     pub wallet: String,
     pub paid_rp: i64,
@@ -153,6 +153,21 @@ pub async fn ensure_wallet(db: &PgPool, wallet: &str) -> Result<WalletLedger, sq
     .bind(wallet)
     .fetch_one(db)
     .await
+}
+
+/// Transaction-scoped wallet upsert (used by session creation).
+pub async fn ensure_wallet_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    wallet: &str,
+) -> Result<(), sqlx::Error> {
+    if !valid_wallet(wallet) {
+        return Err(WalletError::Invalid.into());
+    }
+    sqlx::query("INSERT INTO wallets (wallet) VALUES ($1) ON CONFLICT (wallet) DO NOTHING")
+        .bind(wallet)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
 }
 
 /// Grant promotional RP as a FIFO expiry lot. The wallet cache and the
