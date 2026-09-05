@@ -134,6 +134,35 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check -p leptos-auctioning --target wasm32-unknown-unknown
 
+  rust-program-sbf:
+    name: rust · program (sbf + litesvm)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cache agave toolchain
+        id: agave
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/solana/install
+          key: agave-stable-${{ runner.os }}-v1
+      - name: install agave (cargo-build-sbf)
+        if: steps.agave.outputs.cache-hit != 'true'
+        run: sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+      - run: echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - run: cargo build-sbf
+        working-directory: programs/auctioning
+      - run: rm -f target/deploy/auctioning-keypair.json
+      - run: REQUIRE_SBF=1 cargo test -p auctioning --test onchain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auctioning.so
+          path: target/deploy/auctioning.so
+          retention-days: 14
+
   rust-deny:
     name: rust · cargo-deny
     needs: changes
@@ -189,6 +218,7 @@ jobs:
       - rust-test
       - rust-db-smoke
       - rust-wasm
+      - rust-program-sbf
       - rust-deny
       - marketing
       - seeder

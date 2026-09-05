@@ -95,6 +95,12 @@ program-build: ## anchor build (needs anchor-cli + keys/auctioning-keypair.json)
 program-test: ## Pure-logic + PDA contract tests (no validator)
 	cargo test -p auctioning
 
+.PHONY: program-sbf
+program-sbf: ## cargo build-sbf + LiteSVM suite (needs agave toolchain on PATH)
+	cd programs/auctioning && cargo build-sbf
+	rm -f target/deploy/auctioning-keypair.json
+	REQUIRE_SBF=1 cargo test -p auctioning --test onchain
+
 # ---------------------------------------------------------------- housekeeping
 .PHONY: clean
 clean: ## Remove build output

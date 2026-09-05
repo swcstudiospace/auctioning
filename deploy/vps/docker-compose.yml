@@ -1,0 +1,77 @@
+# auctioning.lol API on a self-hosted VPS.
+#
+# Layout (mirrors the other stacks on the box):
+#   /opt/auctioning          checkout of this repo (this file lives at deploy/vps/)
+#   /etc/auctioning/api.env  secrets, root:root 0600 — never in git
+#   systemd: auctioning.service  → docker compose up -d
+#   cloudflared ingress: api-auctioning.swcstudio.space → http://127.0.0.1:8000
+#
+# Nothing here is reachable from the internet directly: the API binds to
+# loopback and Cloudflare Tunnel is the only ingress.
+
+name: auctioning-prod
+
+networks:
+  auctioning:
+    driver: bridge
+
+volumes:
+  pgdata:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: auctioning
+      POSTGRES_USER: auctioning
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in /etc/auctioning/api.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [auctioning]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auctioning -d auctioning"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: auctioning-api:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - /etc/auctioning/api.env
+    environment:
+      DATABASE_URL: postgres://auctioning:${POSTGRES_PASSWORD}@postgres:5432/auctioning
+      BIND_ADDR: 0.0.0.0:8000
+      RUST_LOG: ${RUST_LOG:-info,sqlx=warn,tower_http=info}
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks: [auctioning]
+    volumes:
+      # Program/authority keypairs stay outside the checkout; read-only.
+      - /etc/auctioning/keys:/app/keys:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/readyz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

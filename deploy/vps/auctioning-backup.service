@@ -1,0 +1,8 @@
+[Unit]
+Description=auctioning.lol nightly Postgres dump
+After=auctioning.service
+Requires=auctioning.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/auctioning/deploy/vps/backup.sh

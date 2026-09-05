@@ -24,6 +24,11 @@ All notable changes to this project are documented here. The format follows
   canonical `0..n` ranking with unique entrants; fee vault must be system-owned.
 
 ### Added
+- `deploy/vps/`: self-hosted production stack (compose, systemd, nightly
+  pg_dump timer, one-command `deploy.sh`, Cloudflare Tunnel ingress) — the API
+  runs at `https://api-auctioning.swcstudio.space` until Shuttle is set up.
+- `programs/auctioning/tests/onchain.rs`: LiteSVM suite against the compiled
+  SBF program (happy path + nine failure paths); CI builds the `.so` and runs it.
 - BI endpoints: `/v1/stats/overview`, `/v1/projects/{handle}/stats`,
   `/v1/wallets/me/history`, `/v1/stats/revenue`; SQL views `v_window_finals`,
   `v_wallet_daily`, `v_project_daily_fuel`; `paid_rp`/`community_rp` on snapshots.
@@ -63,7 +68,6 @@ All notable changes to this project are documented here. The format follows
 ### Known debt
 - `ambiguous_glob_reexports` in `programs/auctioning/src/lib.rs` (clippy `-A` in CI).
 - `AUTHORITY_SECRET` still a plain secret; move to KMS before the settle path goes live.
-- No on-chain integration test suite yet (`solana-program-test` / litesvm).
 
 ## [0.2.0] — 2026-08-30
 
