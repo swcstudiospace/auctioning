@@ -5693,7 +5693,7 @@ dependencies = [
  "anyhow",
  "auctioning-magicblock",
  "axum",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bincode",
  "bs58",
  "chrono",
