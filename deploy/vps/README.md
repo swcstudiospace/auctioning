@@ -48,6 +48,10 @@ additive by policy (`CONTRIBUTING.md`), so old binaries run against new schema.
 
 ## Operations
 
+All `docker compose` commands below assume
+`cd /opt/auctioning/deploy/vps` and `--env-file /etc/auctioning/api.env`
+(the systemd unit passes it for you; a shell must).
+
 | Task | Command |
 |---|---|
 | Logs | `cd /opt/auctioning/deploy/vps && docker compose logs -f api` |

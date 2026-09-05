@@ -11,7 +11,7 @@ chmod 700 "$DEST"
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 out="$DEST/auctioning-$stamp.sql.gz"
-docker compose exec -T postgres pg_dump -U auctioning --no-owner --no-privileges auctioning \
+docker compose --env-file /etc/auctioning/api.env exec -T postgres pg_dump -U auctioning --no-owner --no-privileges auctioning \
   | gzip -9 > "$out.tmp"
 mv "$out.tmp" "$out"
 sha256sum "$out" > "$out.sha256"
