@@ -1,0 +1,9 @@
+# Snippet merged into /etc/cloudflared/config.yml on the VPS (ingress list).
+# Route DNS once:  cloudflared tunnel route dns <tunnel> api-auctioning.swcstudio.space
+- hostname: api-auctioning.swcstudio.space
+  service: http://127.0.0.1:8000
+  originRequest:
+    connectTimeout: 10s
+    keepAliveTimeout: 90s
+    noHappyEyeballs: true
+    httpHostHeader: api-auctioning.swcstudio.space
