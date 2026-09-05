@@ -9,7 +9,7 @@
 # Nothing here is reachable from the internet directly: the API binds to
 # loopback and Cloudflare Tunnel is the only ingress.
 
-name: auctioning
+name: auctioning-prod
 
 networks:
   auctioning:
