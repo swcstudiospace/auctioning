@@ -17,7 +17,10 @@ use solana_message::Message;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
-const SO_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/deploy/auctioning.so");
+const SO_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../target/deploy/auctioning.so"
+);
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 const SYSTEM_PROGRAM: Address = Address::new_from_array([0; 32]);
 
@@ -57,8 +60,7 @@ impl Chain {
             Err(e) => panic!("REQUIRE_SBF set but {SO_PATH} unreadable: {e}"),
         };
         let mut svm = LiteSVM::new();
-        svm.add_program(program_id(), &bytes)
-            .expect("load program");
+        svm.add_program(program_id(), &bytes).expect("load program");
         Some(Self { svm })
     }
 
@@ -295,8 +297,11 @@ fn happy_path_initialize_register_pay_open_settle() {
     let vault = c.funded();
     let owner = c.funded();
 
-    c.send(c.initialize(&authority, &vault.pubkey(), 300), &[&authority])
-        .expect("initialize");
+    c.send(
+        c.initialize(&authority, &vault.pubkey(), 300),
+        &[&authority],
+    )
+    .expect("initialize");
     let cfg = config(&c.data(&pda(&[b"config"])));
     assert_eq!(cfg.authority, authority.pubkey().to_bytes());
     assert_eq!(cfg.fee_vault, vault.pubkey().to_bytes());
@@ -312,7 +317,15 @@ fn happy_path_initialize_register_pay_open_settle() {
 
     let vault_before = c.lamports(&vault.pubkey());
     c.send(
-        c.log_paid_rp(&owner, &project_pda, &vault.pubkey(), 0, 10, LAMPORTS_PER_SOL, "whop:pay_1"),
+        c.log_paid_rp(
+            &owner,
+            &project_pda,
+            &vault.pubkey(),
+            0,
+            10,
+            LAMPORTS_PER_SOL,
+            "whop:pay_1",
+        ),
         &[&owner],
     )
     .expect("log_paid_rp");
@@ -351,7 +364,10 @@ fn happy_path_initialize_register_pay_open_settle() {
     assert_eq!(race_status_and_results(&c.data(&race)), (1, 2));
 
     let err = c
-        .send(c.settle_race(&owner, &project_pda, 0, &[(a, 1, 0)]), &[&owner])
+        .send(
+            c.settle_race(&owner, &project_pda, 0, &[(a, 1, 0)]),
+            &[&owner],
+        )
         .unwrap_err();
     assert!(err.contains("RaceAlreadySettled"), "{err}");
 }
@@ -366,7 +382,10 @@ fn guards_fee_vault_pause_authority_and_ranking() {
 
     // Fee out of range refuses.
     let err = c
-        .send(c.initialize(&authority, &vault.pubkey(), 5001), &[&authority])
+        .send(
+            c.initialize(&authority, &vault.pubkey(), 5001),
+            &[&authority],
+        )
         .unwrap_err();
     assert!(err.contains("FeeOutOfRange"), "{err}");
     // Fee vault must be a system wallet (not the program itself).
@@ -375,11 +394,17 @@ fn guards_fee_vault_pause_authority_and_ranking() {
         .unwrap_err();
     assert!(err.contains("BadFeeVault"), "{err}");
 
-    c.send(c.initialize(&authority, &vault.pubkey(), 250), &[&authority])
-        .unwrap();
+    c.send(
+        c.initialize(&authority, &vault.pubkey(), 250),
+        &[&authority],
+    )
+    .unwrap();
     // Initialize is one-shot.
     assert!(c
-        .send(c.initialize(&authority, &vault.pubkey(), 250), &[&authority])
+        .send(
+            c.initialize(&authority, &vault.pubkey(), 250),
+            &[&authority]
+        )
         .is_err());
 
     c.send(c.register_project(&owner, "x"), &[&owner]).unwrap();
@@ -449,12 +474,17 @@ fn guards_fee_vault_pause_authority_and_ranking() {
         .send(c.open_race(&stranger, &project_pda, 0), &[&stranger])
         .unwrap_err();
     assert!(err.contains("Unauthorized"), "{err}");
-    c.send(c.open_race(&owner, &project_pda, 0), &[&owner]).unwrap();
+    c.send(c.open_race(&owner, &project_pda, 0), &[&owner])
+        .unwrap();
 
     // Ranking must be canonical.
     let a = Keypair::new().pubkey();
     let b = Keypair::new().pubkey();
-    for bad in [vec![(a, 1, 1), (b, 0, 0)], vec![(a, 1, 0), (a, 0, 1)], vec![(a, 1, 0), (b, 0, 2)]] {
+    for bad in [
+        vec![(a, 1, 1), (b, 0, 0)],
+        vec![(a, 1, 0), (a, 0, 1)],
+        vec![(a, 1, 0), (b, 0, 2)],
+    ] {
         let err = c
             .send(c.settle_race(&owner, &project_pda, 0, &bad), &[&owner])
             .unwrap_err();
@@ -462,11 +492,17 @@ fn guards_fee_vault_pause_authority_and_ranking() {
     }
     // Strangers cannot settle; the protocol authority can.
     let err = c
-        .send(c.settle_race(&stranger, &project_pda, 0, &[(a, 1, 0)]), &[&stranger])
+        .send(
+            c.settle_race(&stranger, &project_pda, 0, &[(a, 1, 0)]),
+            &[&stranger],
+        )
         .unwrap_err();
     assert!(err.contains("Unauthorized"), "{err}");
-    c.send(c.settle_race(&authority, &project_pda, 0, &[(a, 1, 0)]), &[&authority])
-        .expect("protocol authority settles");
+    c.send(
+        c.settle_race(&authority, &project_pda, 0, &[(a, 1, 0)]),
+        &[&authority],
+    )
+    .expect("protocol authority settles");
 
     // Authority rotation is irreversible for the old key.
     let multisig = c.funded();
@@ -476,8 +512,14 @@ fn guards_fee_vault_pause_authority_and_ranking() {
     )
     .unwrap();
     assert!(c
-        .send(c.update_config(&authority, Some(1), None, None, None), &[&authority])
+        .send(
+            c.update_config(&authority, Some(1), None, None, None),
+            &[&authority]
+        )
         .is_err());
-    c.send(c.update_config(&multisig, Some(1), None, None, None), &[&multisig])
-        .unwrap();
+    c.send(
+        c.update_config(&multisig, Some(1), None, None, None),
+        &[&multisig],
+    )
+    .unwrap();
 }

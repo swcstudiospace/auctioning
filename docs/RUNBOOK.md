@@ -31,7 +31,17 @@ Store the authority keypair in Vault/KMS — never in the repo.
 Client PDA derivations are pinned by `programs/auctioning/tests/pda_contract.rs`;
 keep them green when touching seeds.
 
-## 2. Shuttle backend
+## 2. Backend hosting
+
+Two supported targets. **Today the API runs on the VPS** (`deploy/vps/README.md`)
+at `https://api-auctioning.swcstudio.space`; Shuttle below is the managed
+alternative and uses the same binary and secrets.
+
+### 2a. VPS (current)
+
+See `deploy/vps/README.md`. Deploy = `sudo /opt/auctioning/deploy/vps/deploy.sh`.
+
+### 2b. Shuttle
 
 ```bash
 cd backend/shuttle-auctioning

@@ -78,6 +78,9 @@ browser at the API directly, add that origin to `ALLOWED_ORIGINS`.
 ## Keys
 
 `/etc/auctioning/keys/` (root, 0700) is mounted read-only at `/app/keys` in
-the container. The program keypair does **not** need to be there — only the
-race-settle authority once the settle path is enabled. Keep the program
-upgrade keypair in a password manager; it is only used by `anchor deploy`.
+the container. It holds:
+
+- `auctioning-program-keypair.json` — the program upgrade identity
+  (`3GGY…ZNGs`). Only `anchor deploy` needs it; the API never reads it. Also
+  keep a copy in a password manager — losing it means losing upgrade rights.
+- (later) the race-settle authority keypair, referenced via `AUTHORITY_SECRET`.

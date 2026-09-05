@@ -5,6 +5,18 @@
 - Solana CLI
 - A funded keypair for the program deployer (will become upgrade authority)
 
+## 1b. Where the program keypair lives now
+
+On the VPS the program keypair is at `/etc/auctioning/keys/auctioning-program-keypair.json`
+(root, 0600) — **not** in the checkout. It is only needed by `anchor deploy` /
+`solana program deploy`; the running API never reads it. `cargo build-sbf`
+writes a throwaway keypair to `target/deploy/` — delete it, never deploy with it.
+
+```bash
+sudo cp /etc/auctioning/keys/auctioning-program-keypair.json programs/auctioning/target/deploy/auctioning-keypair.json
+solana-keygen pubkey programs/auctioning/target/deploy/auctioning-keypair.json   # must print 3GGY…ZNGs
+```
+
 ## 2. Generate / Update Program ID
 ```bash
 # From repo root. Durable path — never store the program keypair under target/deploy
