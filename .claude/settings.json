@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$CLAUDE_CODE_REMOTE\" ]; then bash \"$CLAUDE_PROJECT_DIR/infra/ssh-tunnel/session-init.sh\"; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
