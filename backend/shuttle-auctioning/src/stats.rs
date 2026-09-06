@@ -50,7 +50,7 @@ pub async fn overview(db: &PgPool) -> Result<Overview, sqlx::Error> {
           (SELECT COUNT(DISTINCT supporter_wallet) FROM project_allocations
              WHERE created_at > now() - interval '7 days')::bigint                  AS unique_supporters_7d,
           (SELECT COALESCE(SUM(amount), 0) FROM project_allocations
-             WHERE source = 'paid' AND created_at > now() - interval '7 days')::bigint
+             WHERE source IN ('paid', 'outbid_mirror') AND created_at > now() - interval '7 days')::bigint
                                                                                     AS paid_rp_7d,
           (SELECT COUNT(*) FROM race_windows WHERE status = 'live')::bigint         AS live_windows
         "#,
@@ -124,8 +124,8 @@ pub async fn project_lifetime(db: &PgPool, handle: &str) -> Result<ProjectLifeti
     sqlx::query_as::<_, ProjectLifetime>(
         r#"
         SELECT COALESCE(SUM(amount), 0)::bigint                                    AS race_rp,
-               COALESCE(SUM(amount) FILTER (WHERE source = 'paid'), 0)::bigint     AS paid_rp,
-               COALESCE(SUM(amount) FILTER (WHERE source <> 'paid'), 0)::bigint    AS community_rp,
+               COALESCE(SUM(amount) FILTER (WHERE source IN ('paid', 'outbid_mirror')), 0)::bigint AS paid_rp,
+               COALESCE(SUM(amount) FILTER (WHERE source NOT IN ('paid', 'outbid_mirror')), 0)::bigint AS community_rp,
                COUNT(DISTINCT supporter_wallet)::bigint                             AS supporters,
                COUNT(*)::bigint                                                     AS allocations,
                MIN(created_at)                                                      AS first_fuel_at,

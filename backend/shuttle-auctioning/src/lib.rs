@@ -21,11 +21,13 @@ pub mod ledger;
 pub mod narrative;
 pub mod oauth_llm;
 mod onchain;
+pub mod outbid;
 pub mod publish;
 pub mod race_engine;
 pub mod race_worker;
 pub mod ratelimit;
 pub mod stats;
+pub mod supabase_auth;
 pub mod ticks;
 pub mod whop;
 
@@ -192,6 +194,10 @@ pub fn router(state: AppState) -> Router {
             get(handlers::list_projects).post(handlers::submit_project),
         )
         .route("/v1/projects/import", post(handlers::import_projects))
+        // --- outbid.lol mirror (collector pushes; public status) -----------
+        .route("/v1/outbid/sync", post(handlers::outbid_sync))
+        .route("/v1/outbid/status", get(handlers::outbid_status))
+        .route("/v1/outbid/hosts", get(handlers::outbid_hosts))
         .route("/v1/projects/{handle}", get(handlers::get_project))
         .route(
             "/v1/projects/{handle}/stats",

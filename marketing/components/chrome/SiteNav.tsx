@@ -5,6 +5,7 @@ import { brand } from "@/lib/brand";
 import { Logo } from "@/components/chrome/Logo";
 import { ShinyButton } from "@/components/magic/ShinyButton";
 import { ActivePaceChip } from "@/components/chrome/ActivePaceChip";
+import AccountMenu from "@/components/auth/AccountMenu";
 import { cn } from "@/lib/utils";
 
 export default function SiteNav() {
@@ -31,6 +32,7 @@ export default function SiteNav() {
           })}
         </nav>
         <ActivePaceChip />
+        <AccountMenu />
         <ShinyButton href="/rank#claim">Claim #1</ShinyButton>
       </div>
     </header>

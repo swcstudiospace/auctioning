@@ -25,6 +25,17 @@ pub struct Project {
     pub total_rp: i64,
     #[serde(default)]
     pub clicks: i64,
+    /// outbid.lol mirror facts (0 / None when the project is not from outbid).
+    #[serde(default)]
+    pub outbid_amount_cents: i64,
+    #[serde(default)]
+    pub outbid_rank: Option<i32>,
+    #[serde(default)]
+    pub outbid_category: Option<String>,
+    #[serde(default)]
+    pub mirrored_rp: i64,
+    #[serde(default)]
+    pub image_url: Option<String>,
 }
 
 /// One incoming listing from a board snapshot / import payload.
@@ -350,7 +361,8 @@ pub async fn submit_site(db: &PgPool, req: SubmitSite) -> Result<SubmitOutcome, 
     let existing: Option<Project> = sqlx::query_as::<_, Project>(
         r#"
         SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
-               stable_id, url, tags, total_rp, clicks
+               stable_id, url, tags, total_rp, clicks,
+               outbid_amount_cents, outbid_rank, outbid_category, mirrored_rp, image_url
         FROM projects
         WHERE handle = $1
            OR stable_id = $2
@@ -437,7 +449,8 @@ pub async fn submit_site(db: &PgPool, req: SubmitSite) -> Result<SubmitOutcome, 
     let project = sqlx::query_as::<_, Project>(
         r#"
         SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
-               stable_id, url, tags, total_rp, clicks
+               stable_id, url, tags, total_rp, clicks,
+               outbid_amount_cents, outbid_rank, outbid_category, mirrored_rp, image_url
         FROM projects WHERE handle = $1
         "#,
     )
@@ -467,6 +480,17 @@ pub struct ProjectWithRank {
     pub rank: i64,
     #[serde(default)]
     pub clicks: i64,
+    /// outbid.lol mirror facts (0 / None when the project is not from outbid).
+    #[serde(default)]
+    pub outbid_amount_cents: i64,
+    #[serde(default)]
+    pub outbid_rank: Option<i32>,
+    #[serde(default)]
+    pub outbid_category: Option<String>,
+    #[serde(default)]
+    pub mirrored_rp: i64,
+    #[serde(default)]
+    pub image_url: Option<String>,
 }
 
 /// Ranked board: highest total_rp first, ties broken by earliest creation.
@@ -541,7 +565,8 @@ async fn list_projects_page_inner(
     let projects = sqlx::query_as::<_, ProjectWithRank>(
         r#"
         SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
-               stable_id, url, tags, total_rp, rank, clicks
+               stable_id, url, tags, total_rp, rank, clicks,
+               outbid_amount_cents, outbid_rank, outbid_category, mirrored_rp, image_url
         FROM (
             SELECT p.*,
                    row_number() OVER (ORDER BY p.total_rp DESC, p.created_at ASC, p.handle ASC) AS rank
@@ -595,7 +620,8 @@ pub async fn get_project(db: &PgPool, handle: &str) -> Result<Option<Project>, s
     sqlx::query_as::<_, Project>(
         r#"
         SELECT handle, owner_wallet, source, source_ref, display_name, blurb,
-               stable_id, url, tags, total_rp, clicks
+               stable_id, url, tags, total_rp, clicks,
+               outbid_amount_cents, outbid_rank, outbid_category, mirrored_rp, image_url
         FROM projects WHERE handle = $1
         "#,
     )

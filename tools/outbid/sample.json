@@ -1,0 +1,35 @@
+{
+  "collector": "outbid_collector/sample",
+  "entries": [
+    {
+      "id": "4bafa87f-0e22-4557-b761-a355473f0d3e",
+      "identity_key": "website:see.io",
+      "display_name": "see.io · see your idea live",
+      "description": "Just describe your idea. AI turns it into a fully built, live website in minutes.",
+      "source_url": "https://see.io/",
+      "product_url": "https://outbid.lol/product/see.io",
+      "image_url": null,
+      "category_slug": "ai-agents-infrastructure",
+      "amount_cents": 1700000,
+      "click_count": 51957,
+      "created_at": "2026-08-24T08:48:56.493Z",
+      "rank": 1,
+      "category_rank": 1
+    },
+    {
+      "id": "1a887bdd-8cc3-4da5-ac62-351a7e23b1b6",
+      "identity_key": "website:tutti.so",
+      "display_name": "Tutti — Your all-in-one marketplace to monetize influence",
+      "description": "Join campaigns from real brands and get paid on effective exposure and engagement.",
+      "source_url": "https://tutti.so/join",
+      "product_url": "https://outbid.lol/product/tutti.so",
+      "image_url": null,
+      "category_slug": "marketing-advertising",
+      "amount_cents": 1600000,
+      "click_count": 12775,
+      "created_at": "2026-08-25T10:00:00.000Z",
+      "rank": 2,
+      "category_rank": 1
+    }
+  ]
+}

@@ -276,7 +276,21 @@ impl FromRequestParts<crate::AppState> for AuthedWallet {
         let Some(token) = bearer(&parts.headers) else {
             return Err(AppError::Unauthorized);
         };
-        if token.is_empty() || token.len() > 128 {
+        if token.is_empty() {
+            return Err(AppError::Unauthorized);
+        }
+        // Supabase access tokens are JWTs; wallet sessions are opaque and
+        // short. Route on shape so neither path pays for the other.
+        if crate::supabase_auth::looks_like_jwt(token) {
+            let Some(sb) = state.cfg.supabase() else {
+                return Err(AppError::Unauthorized);
+            };
+            return match crate::supabase_auth::resolve(&state.db, &sb, token).await? {
+                Some(p) => Ok(AuthedWallet(p.wallet)),
+                None => Err(AppError::Unauthorized),
+            };
+        }
+        if token.len() > 128 {
             return Err(AppError::Unauthorized);
         }
         match wallet_for_token(&state.db, token).await? {
@@ -412,8 +426,25 @@ pub async fn verify_handler(
 
 pub async fn me_handler(
     State(state): State<crate::AppState>,
+    headers: HeaderMap,
     AuthedWallet(wallet): AuthedWallet,
 ) -> AppResult<Json<serde_json::Value>> {
+    let supabase = bearer(&headers).is_some_and(crate::supabase_auth::looks_like_jwt);
+    if supabase {
+        let ident: Option<(Option<String>, Option<String>)> =
+            sqlx::query_as("SELECT email, provider FROM supabase_identities WHERE wallet = $1")
+                .bind(&wallet)
+                .fetch_optional(&state.db)
+                .await?;
+        let (email, provider) = ident.unwrap_or((None, None));
+        return Ok(Json(json!({
+            "wallet": wallet,
+            "principal": "supabase",
+            "email": email,
+            "provider": provider,
+            "expires_at": serde_json::Value::Null,
+        })));
+    }
     let row: Option<(DateTime<Utc>,)> = sqlx::query_as(
         "SELECT MAX(expires_at) FROM auth_sessions WHERE wallet = $1 AND revoked_at IS NULL",
     )
@@ -422,6 +453,7 @@ pub async fn me_handler(
     .await?;
     Ok(Json(json!({
         "wallet": wallet,
+        "principal": "wallet",
         "expires_at": row.map(|(t,)| t),
     })))
 }
@@ -432,6 +464,11 @@ pub async fn logout_handler(
     AuthedWallet(wallet): AuthedWallet,
 ) -> AppResult<Json<serde_json::Value>> {
     let revoked = match bearer(&headers) {
+        Some(token) if crate::supabase_auth::looks_like_jwt(token) => {
+            // Supabase sessions end client-side; just drop our cache entry.
+            crate::supabase_auth::forget(token);
+            false
+        }
         Some(token) => revoke_token(&state.db, token).await?,
         None => false,
     };

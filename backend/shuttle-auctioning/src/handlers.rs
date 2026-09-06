@@ -13,6 +13,7 @@ use crate::onchain::{
     PrepareOpenRaceResponse, PrepareRegisterRequest, PrepareRegisterResponse,
     PrepareSettleRaceRequest, PrepareSettleRaceResponse,
 };
+use crate::outbid;
 use crate::race_engine;
 use crate::whop::{self, WhopWebhookEvent};
 use axum::extract::{Path, Query, State};
@@ -412,6 +413,60 @@ pub async fn import_projects(
         .map_err(AppError::from)?;
     tracing::info!(imported, updated, "project import applied");
     Ok(Json(json!({ "imported": imported, "updated": updated })))
+}
+
+// ---------------------------------------------------------------------------
+// outbid.lol mirror
+// ---------------------------------------------------------------------------
+
+/// Collector push: upsert every outbid.lol entry and mirror its dollars into
+/// RP (1 RP = $1, increase only). Ingest-gated like `import_projects`.
+pub async fn outbid_sync(
+    State(state): State<crate::AppState>,
+    _ingest: Ingest,
+    Json(req): Json<outbid::SyncRequest>,
+) -> AppResult<Json<outbid::SyncOutcome>> {
+    if req.entries.is_empty() {
+        return Err(AppError::BadRequest("empty sync batch".into()));
+    }
+    if req.entries.len() > outbid::MAX_BATCH {
+        return Err(AppError::BadRequest(format!(
+            "batch too large (max {})",
+            outbid::MAX_BATCH
+        )));
+    }
+    let outcome = outbid::apply_sync(&state.db, &req)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Configuration(msg) => AppError::BadRequest(msg.to_string()),
+            other => AppError::from(other),
+        })?;
+    tracing::info!(
+        run = %outcome.run_id,
+        seen = outcome.entries_seen,
+        created = outcome.created,
+        updated = outcome.updated,
+        rp = outcome.rp_credited,
+        "outbid sync applied"
+    );
+    Ok(Json(outcome))
+}
+
+/// Public: mirror totals and the last collector runs.
+pub async fn outbid_status(
+    State(state): State<crate::AppState>,
+) -> AppResult<Json<outbid::SyncStatus>> {
+    Ok(Json(outbid::status(&state.db).await?))
+}
+
+/// Ingest-gated: hosts already mirrored, so the collector can skip product
+/// pages it has seen.
+pub async fn outbid_hosts(
+    State(state): State<crate::AppState>,
+    _ingest: Ingest,
+) -> AppResult<Json<serde_json::Value>> {
+    let hosts = outbid::known_hosts(&state.db).await?;
+    Ok(Json(json!({ "hosts": hosts })))
 }
 
 #[derive(Deserialize)]

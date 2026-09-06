@@ -366,6 +366,14 @@ export default function Leaderboard({ initial }: { initial?: ProjectList | null 
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="truncate font-semibold">{p.display_name || p.handle}</span>
                     <RaceBadge badge={badge} />
+                    {p.outbid_amount_cents ? (
+                      <span
+                        className="hidden shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-mono text-[10px] text-amber-800 md:inline"
+                        title="Paid on outbid.lol · mirrored 1 RP per $1"
+                      >
+                        ${Math.floor(p.outbid_amount_cents / 100).toLocaleString()} outbid
+                      </span>
+                    ) : null}
                   </div>
                   <span className="text-right text-sm font-semibold text-forest">{fmtRp(p.total_rp)}</span>
                   <span className="text-right font-mono text-[11px] text-neutral-400">GAP {gap}</span>

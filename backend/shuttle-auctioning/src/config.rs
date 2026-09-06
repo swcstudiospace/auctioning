@@ -81,6 +81,10 @@ pub struct AppConfig {
     pub supergrok_client_secret: Option<String>,
     pub supergrok_redirect_uri: Option<String>,
     pub supergrok_completion_url: Option<String>,
+    /// Supabase Auth: project URL + publishable/anon key. Both set = Supabase
+    /// access tokens are accepted as bearers (see `supabase_auth.rs`).
+    pub supabase_url: Option<String>,
+    pub supabase_anon_key: Option<String>,
 }
 
 fn non_empty(v: Option<String>) -> Option<String> {
@@ -136,6 +140,10 @@ impl AppConfig {
             supergrok_client_secret: get("SUPERGROK_CLIENT_SECRET"),
             supergrok_redirect_uri: get("SUPERGROK_REDIRECT_URI"),
             supergrok_completion_url: get("SUPERGROK_COMPLETION_URL"),
+            supabase_url: non_empty(get("SUPABASE_URL"))
+                .map(|u| u.trim_end_matches('/').to_string()),
+            supabase_anon_key: non_empty(get("SUPABASE_ANON_KEY"))
+                .or_else(|| non_empty(get("SUPABASE_PUBLISHABLE_KEY"))),
         }
     }
 
@@ -182,6 +190,14 @@ impl AppConfig {
                 problems.push("OPERATOR_TOKEN is shorter than 16 chars".into());
             }
         }
+        if let Some(u) = &self.supabase_url {
+            if !u.starts_with("https://") && self.env != AppEnv::Dev {
+                problems.push("SUPABASE_URL must be https outside dev".into());
+            }
+        }
+        if self.supabase_url.is_some() != self.supabase_anon_key.is_some() {
+            problems.push("SUPABASE_URL and SUPABASE_ANON_KEY must be set together".into());
+        }
         if self.weekly_free_rp < 0 || self.weekly_free_rp > 10_000 {
             problems.push("WEEKLY_FREE_RP out of range (0..=10000)".into());
         }
@@ -189,6 +205,17 @@ impl AppConfig {
             Ok(())
         } else {
             Err(problems)
+        }
+    }
+
+    /// Supabase Auth is opt-in: both the URL and the anon key must be set.
+    pub fn supabase(&self) -> Option<crate::supabase_auth::SupabaseConfig> {
+        match (&self.supabase_url, &self.supabase_anon_key) {
+            (Some(url), Some(key)) => Some(crate::supabase_auth::SupabaseConfig {
+                url: url.clone(),
+                anon_key: key.clone(),
+            }),
+            _ => None,
         }
     }
 
@@ -275,6 +302,22 @@ mod tests {
     fn dev_bypass_only_in_dev() {
         assert!(cfg(&[("AUTH_DEV_BYPASS", "true")]).auth_dev_bypass);
         assert!(!cfg(&[("APP_ENV", "staging"), ("AUTH_DEV_BYPASS", "true")]).auth_dev_bypass);
+    }
+
+    #[test]
+    fn supabase_requires_both_settings() {
+        assert!(cfg(&[("SUPABASE_URL", "https://x.supabase.co")])
+            .validate()
+            .is_err());
+        let c = cfg(&[
+            ("SUPABASE_URL", "https://x.supabase.co/"),
+            ("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_abc"),
+        ]);
+        assert!(c.validate().is_ok());
+        let sb = c.supabase().expect("enabled");
+        assert_eq!(sb.url, "https://x.supabase.co");
+        assert_eq!(sb.anon_key, "sb_publishable_abc");
+        assert!(cfg(&[]).supabase().is_none());
     }
 
     #[test]

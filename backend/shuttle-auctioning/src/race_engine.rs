@@ -184,7 +184,7 @@ pub fn compute_grid(
                 }
             })
             .or_insert(a.created_at);
-        if a.source == "paid" {
+        if a.source == "paid" || a.source == "outbid_mirror" {
             *paid.entry(handle).or_insert(0) += a.amount;
         }
         if a.created_at >= burst_start && a.created_at <= cfg.now {

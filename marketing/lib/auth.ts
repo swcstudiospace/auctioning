@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch } from "@/lib/api";
+import { supabaseAccessToken } from "@/lib/supabase";
 
 /**
  * Sign-In-With-Solana session for the marketing site.
@@ -69,8 +70,13 @@ function storeToken(token: string | null) {
   }
 }
 
+/**
+ * Bearer for `/v1/*` writes. A Supabase session (email sign-in) wins over a
+ * wallet session so one account drives every RP action; the API tells the
+ * two apart by token shape and resolves both to a ledger wallet.
+ */
 export function authHeaders(): Record<string, string> {
-  const token = sessionToken();
+  const token = supabaseAccessToken() || sessionToken();
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 

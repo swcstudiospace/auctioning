@@ -51,7 +51,9 @@ services:
     env_file:
       - /etc/auctioning/api.env
     environment:
-      DATABASE_URL: postgres://auctioning:${POSTGRES_PASSWORD}@postgres:5432/auctioning
+      # Local Postgres by default. Set DATABASE_URL in api.env to run on
+      # Supabase instead (direct/session string, port 5432 — see RUNBOOK §5).
+      DATABASE_URL: ${DATABASE_URL:-postgres://auctioning:${POSTGRES_PASSWORD}@postgres:5432/auctioning}
       BIND_ADDR: 0.0.0.0:8000
       RUST_LOG: ${RUST_LOG:-info,sqlx=warn,tower_http=info}
     ports:
@@ -75,3 +77,37 @@ services:
       options:
         max-size: "20m"
         max-file: "5"
+
+  # outbid.lol autosync: crawls the boards on an interval and pushes every
+  # business + dollar value to POST /v1/outbid/sync (1 RP = $1, increase only).
+  # outbid.lol sits behind Vercel's bot checkpoint, so the collector runs
+  # inside the Playwright image and falls back to headless Chromium when
+  # plain HTTP is answered with 429. Never exposed; talks to the API over the
+  # compose network only.
+  outbid-sync:
+    image: mcr.microsoft.com/playwright/python:v1.55.0-noble
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file:
+      - /etc/auctioning/api.env
+    environment:
+      AUCTIONING_API: http://api:8000
+      OUTBID_SYNC_INTERVAL_SECS: ${OUTBID_SYNC_INTERVAL_SECS:-3600}
+      OUTBID_DAILY_DAYS: ${OUTBID_DAILY_DAYS:-7}
+      OUTBID_PRODUCTS: ${OUTBID_PRODUCTS:-1}
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ../../tools/outbid:/opt/collector:ro
+    command: ["python3", "/opt/collector/outbid_collector.py", "--push", "--loop"]
+    networks: [auctioning]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

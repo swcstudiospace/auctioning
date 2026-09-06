@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **outbid.lol mirror + autosync.** `tools/outbid/outbid_collector.py` crawls
+  every outbid.lol board (all-time, today, 28 categories, daily) through the
+  RSC payload — headless Chromium when Vercel's checkpoint answers 429 — and
+  pushes `POST /v1/outbid/sync`. Each business becomes a catalog project
+  (`outbid:<host>`, adopting hand-submitted rows) and its dollars are mirrored
+  into race RP at 1 RP = $1 as append-only `outbid_mirror` allocations
+  (increase only). `GET /v1/outbid/status` exposes totals and the audited
+  runs (`outbid_sync_runs`); the `outbid-sync` compose service runs it hourly.
+  Migration 0010; `projects` gains `outbid_*`, `mirrored_rp`, `image_url`.
+- **Supabase Auth.** Supabase access tokens are accepted as bearers
+  (`SUPABASE_URL` + `SUPABASE_ANON_KEY`, verified by introspection) and map to
+  a deterministic `sb<base58(uuid)>` ledger wallet (`supabase_identities`).
+  The marketing site gets an email-OTP account menu; `authHeaders()` prefers
+  the Supabase session. Wallet sign-in is unchanged.
+- **Supabase Postgres.** `deploy/vps/docker-compose.yml` honours an external
+  `DATABASE_URL` so the ledger can run on Supabase (direct/session string).
+
+### Fixed
+- Build broken by dependabot bumps: `bincode` 3.0.0 is a placeholder crate
+  that refuses to compile, and `sha2` 0.11 is incompatible with `hmac` 0.12;
+  both pinned back (`bincode = "1"`, `sha2 = "0.10"`).
+
 ### Security
 - **Wallet sessions (Sign-In-With-Solana).** `claim-weekly`, `spend`, `support`
   and `content/read` no longer trust a `wallet` field; they take the wallet from

@@ -71,6 +71,12 @@ export type Project = {
   total_rp: number;
   rank: number;
   clicks?: number;
+  /** outbid.lol mirror: dollars paid there (cents) and RP credited from them. */
+  outbid_amount_cents?: number;
+  outbid_rank?: number | null;
+  outbid_category?: string | null;
+  mirrored_rp?: number;
+  image_url?: string | null;
 };
 
 export type ProjectList = {

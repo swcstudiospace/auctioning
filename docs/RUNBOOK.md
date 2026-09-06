@@ -148,32 +148,72 @@ Env vars this Next app actually reads (Production + Preview + Development):
 this Next project. Copying the root `.env.example` into Vercel does not wire
 the catalog.
 
-### Supabase
+### Supabase (database + auth)
 
-Do not add `@supabase/supabase-js` to `marketing/`. Catalog, RP lots, and races
-live in Shuttle (sqlx + `shuttle-shared-db`). A Next/Supabase client would
-bypass that ledger.
+**Database.** `auctioning-api-runner` takes any Postgres via `DATABASE_URL`,
+so Supabase hosts the ledger by setting that in `/etc/auctioning/api.env`
+(the compose file falls back to the local `postgres` service when it is
+unset). Use the **direct / session** string on port 5432; transaction-mode
+Supavisor (`:6543`) breaks sqlx prepared statements. Migrations 0001–0010 run
+at boot. RLS is irrelevant: the Rust API is the only consumer and connects as
+`postgres`. Do not point anything else at those tables.
 
-Supabase **can** host Postgres for `auctioning-api-runner` (`DATABASE_URL` →
-sqlx `PgPool`). Use the **session / direct** string (port 5432) for sqlx and
-`sqlx migrate`. Transaction-mode Supavisor (`:6543`) breaks sqlx prepared
-statements. Production Shuttle still uses `#[shuttle_shared_db::Postgres]`
-unless that macro is replaced with an env-backed pool. RLS on Supabase is
-irrelevant while the only consumer is the Rust API (service connection).
+**Auth.** Sign-in is Supabase Auth (email OTP / OAuth) on the marketing site
+(`@supabase/supabase-js`, used **only** for auth — never for data; every
+read/write still goes through `/v1/*`). The site sends the Supabase access
+token as the bearer; the API verifies it against
+`$SUPABASE_URL/auth/v1/user` (`SUPABASE_URL` + `SUPABASE_ANON_KEY`, both
+required together, `supabase_auth.rs`) and maps the user to a deterministic
+ledger wallet `sb<base58(user uuid)>` recorded in `supabase_identities`. Wallet
+sign-in (Phantom) keeps working; both principals resolve to the same
+`AuthedWallet` so claim/support/spend are unchanged.
+
+Env: API → `SUPABASE_URL`, `SUPABASE_ANON_KEY`; Vercel →
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Supabase
+dashboard → Authentication → URL configuration: site URL
+`https://auctioning.lol`, redirect `https://auctioning.lol/**`.
 
 Keep `/legal/` consistent with docs/LEGAL.md.
 
-## 6. Seed projects from outbid.lol
+## 6. outbid.lol mirror (businesses + dollar values → RP)
 
-outbid.lol sits behind Vercel bot protection; use snapshots:
+Every ranking entry on outbid.lol becomes a catalog project and the dollars it
+has paid there are mirrored into race RP at **1 RP = $1** (floor of the
+amount). Only increases are ever credited, as `outbid_mirror` allocations from
+the fixed wallet `outbidmirror1111111111111111111111111111111`, so the ledger
+stays append-only and community fuel added here is never touched. A drop on
+outbid (which their rules do not allow) is logged and ignored.
 
-1. Save a board snapshot as JSON (array of listings) or capture the rendered
-   HTML containing `__NEXT_DATA__`.
-2. Dry-run: `./tools/seeder/outbid_seed.py --snapshot outbid-snap.json | jq`
-3. Push: `INGEST_SECRET=... AUCTIONING_API=https://<shuttle-url> \
-   ./tools/seeder/outbid_seed.py --snapshot outbid-snap.json --push`
+Collector: `tools/outbid/outbid_collector.py`. outbid.lol is a Next.js App
+Router site behind Vercel's bot checkpoint; the collector reads each board's
+RSC payload (`RSC: 1`), tries plain HTTP first and switches to headless
+Chromium (Playwright) when it gets a 429. One run covers the all-time board,
+today's board, all 28 category boards, the last `--days` daily boards and,
+with `--products`, sitemap product pages not seen on any board (amount
+unknown → 0 RP until they rank).
 
-Imports are idempotent upserts keyed by `stable_id` (`outbid:<id>` convention).
+```bash
+# dry-run: what would be pushed
+./tools/outbid/outbid_collector.py --no-products | jq '.entries | length'
+
+# push once
+INGEST_SECRET=... ./tools/outbid/outbid_collector.py \
+  --api https://api-auctioning.swcstudio.space --push
+
+# autosync: the `outbid-sync` service in deploy/vps/docker-compose.yml runs
+# the same command with --loop every OUTBID_SYNC_INTERVAL_SECS (default 1h).
+```
+
+Endpoints: `POST /v1/outbid/sync` (ingest secret; ≤5000 entries per push,
+atomic), `GET /v1/outbid/status` (public: totals + last runs),
+`GET /v1/outbid/hosts` (ingest secret; lets the collector skip product pages
+it already knows). Keys follow `submit_site`: `stable_id = outbid:<host>`,
+`handle = <host with dots as dashes>`, so a site someone listed by hand is
+adopted rather than duplicated. Every push is audited in `outbid_sync_runs`.
+
+The older snapshot seeder (`tools/seeder/outbid_seed.py` →
+`/v1/projects/import`) still works for descriptive-only imports but does not
+mirror dollars.
 
 ## 7. Races on MagicBlock
 
