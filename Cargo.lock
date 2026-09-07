@@ -5705,7 +5705,7 @@ dependencies = [
  "chrono",
  "futures-util",
  "hex",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "http-body-util",
  "reqwest 0.13.4",
  "serde",
