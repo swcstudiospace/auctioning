@@ -145,7 +145,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cache agave toolchain
         id: agave
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/solana/install
           key: agave-stable-${{ runner.os }}-v1
