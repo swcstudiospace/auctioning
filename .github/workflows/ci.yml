@@ -157,7 +157,7 @@ jobs:
         working-directory: programs/auctioning
       - run: rm -f target/deploy/auctioning-keypair.json
       - run: REQUIRE_SBF=1 cargo test -p auctioning --test onchain
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: auctioning.so
           path: target/deploy/auctioning.so
